@@ -15,6 +15,8 @@ from aiogram.types import Message
 from config import get_settings
 from parser import parse_message
 
+from bot import router as report_router
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -62,6 +64,10 @@ async def cmd_parse(message: Message) -> None:
     total = sum(r.amount for r in records)
     reply = "Распознано записей: " + str(len(records)) + "\n\n" + "\n".join(lines) + "\n\nИтого: " + str(total)
     await message.answer(reply)
+
+
+# Пайплайн: сообщения из группы-источника → PDF в группу-получатель
+dp.include_router(report_router)
 
 
 async def main() -> None:
