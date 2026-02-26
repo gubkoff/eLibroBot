@@ -1,4 +1,6 @@
-# План проекта: Telegram-бот для расчётов и PDF-отчётов
+# План проекта: eLibroCargoReportBot
+
+Telegram-бот для расчётов и PDF-отчётов. **Имя бота:** eLibroCargoReportBot.
 
 ## Цель и поток данных
 
@@ -34,7 +36,7 @@ flowchart LR
 | PDF               | `reportlab` или `weasyprint`                    | Генерация отчёта (таблицы, итоги, даты)               |
 | Конфиг            | `pydantic-settings` + `.env`                    | Токен бота, ID групп, параметры парсинга              |
 
-Используем **aiogram** 3.x для Telegram Bot API.
+Используем **aiogram** 3.x для Telegram Bot API. **Окружение:** разработка и запуск — только в виртуальном окружении Python (**venv**): `python -m venv venv`, активация, затем `pip install -r requirements.txt`.
 
 ---
 
@@ -44,6 +46,7 @@ flowchart LR
 eLibroBot/
 ├── .env.example          # Шаблон: BOT_TOKEN, SOURCE_GROUP_ID, TARGET_GROUP_ID
 ├── .env                  # Не в git
+├── venv/                 # Виртуальное окружение (создаётся через python -m venv venv, в .gitignore)
 ├── requirements.txt
 ├── README.md
 ├── config.py             # Загрузка настроек (pydantic-settings)
@@ -63,7 +66,9 @@ eLibroBot/
 ├── tests/                # Опционально: pytest для parser и calculator
 └── docs/
     ├── PROJECT_PLAN.md   # Этот документ
-    └── STEPS.md          # Пошаговый разбор реализации
+    ├── ROADMAP.md       # Роадмап: этапы, отметки, обсуждение
+    ├── STEPS.md          # Пошаговый разбор с вопросами для обсуждения
+    └── TASK_BREAKDOWN.md # Чёткие шаги и подшаги с чеклистом
 ```
 
 ---
@@ -126,12 +131,12 @@ eLibroBot/
 
 ## 6. Порядок реализации
 
-1. **Скелет проекта:** `requirements.txt`, `config.py`, `main.py` — запуск бота, ответ на `/start`.
+1. **Скелет проекта:** venv, `requirements.txt`, `.env.example`, `config.py`, `main.py`, `.gitignore` — запуск бота из активированного venv, ответ на `/start`.
 2. **Парсер:** модели `Record`, парсинг 1–2 форматов, тесты.
 3. **Калькулятор:** расчёты по списку `Record`, тесты.
 4. **PDF:** построение отчёта, сохранение во временный файл.
 5. **Хендлер сообщений:** фильтр по группе и тексту; пайплайн parse → calc → PDF → send; обработка ошибок.
-6. **Документация:** README с настройкой `.env`, группами, форматом сообщений.
+6. **Документация:** README с настройкой `.env`, venv, группами, форматом сообщений. Подробный чеклист — в [docs/TASK_BREAKDOWN.md](docs/TASK_BREAKDOWN.md).
 
 ---
 
