@@ -1,6 +1,6 @@
-"""Парсер структурированных сообщений в записи Record."""
+"""Парсер сообщений взвешивания в структуру WeighingData."""
 
-from parser.models import Record
+from parser.models import WeighingData
 from parser.parser import parse_message
 
-__all__ = ["Record", "parse_message"]
+__all__ = ["WeighingData", "parse_message"]
