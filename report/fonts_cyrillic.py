@@ -5,6 +5,7 @@ Tries: project fonts/DejaVuSans.ttf, then common system paths.
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -29,7 +30,7 @@ _CANDIDATES = [
 _loaded = False
 
 
-def _find_font_path() -> Path | None:
+def _find_font_path() -> Optional[Path]:
     for p in _CANDIDATES:
         if p.exists():
             return p
