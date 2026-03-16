@@ -4,13 +4,15 @@
 
 import logging
 import os
+from decimal import Decimal
+from typing import Optional
 
 from aiogram import Router
 from aiogram.types import FSInputFile, Message
 
 from config import get_settings
-from parser import parse_message
-from report import build_pdf, calculate
+from parser import WeighingData, parse_message
+from report import CalculationResult, build_pdf
 
 from bot.filters import source_group_message
 
@@ -23,23 +25,28 @@ router = Router()
 async def pipeline_handler(message: Message) -> None:
     """
     Пайплайн по сообщению из группы-источника:
-    parse_message → calculate → build_pdf → send_document → удаление файла.
+    parse_message (WeighingData) → формирование накладной → build_pdf → отправка в группу-получатель.
     Регистрируется с фильтром source_group_message, поэтому сюда попадают только
     текстовые сообщения из SOURCE_GROUP_ID (не команды).
     """
     settings = get_settings()
     pdf_path = None
     try:
-        records = parse_message(message.text or "")
-        if not records:
-            await message.reply("Нет данных для отчёта. Формат строки: дата сумма категория (например 2025-02-26 100 продукты).")
+        data: Optional[WeighingData] = parse_message(message.text or "")
+        if data is None:
+            await message.reply("Не удалось разобрать данные взвешивания. Проверьте формат сообщения.")
             return
-        result = calculate(records)
-        pdf_path = build_pdf(result, records=records)
-        caption = f"Отчёт по сообщению ({len(records)} записей, итого {result.total})"
+
+        pdf_path = build_pdf(
+            CalculationResult(total=data.amount, by_category={data.cargo: data.amount}),
+            records=[],  # данные берутся из weighing
+            weighing=data,
+        )
+        doc_number = data.invoice_number or data.weighing_number
+        caption = f"Накладная № {doc_number} на сумму {data.amount}"
         await message.bot.send_document(
             chat_id=settings.TARGET_GROUP_ID,
-            document=FSInputFile(pdf_path, filename="report.pdf"),
+            document=FSInputFile(pdf_path, filename=f"report_{doc_number}.pdf"),
             caption=caption,
         )
     except Exception as e:
