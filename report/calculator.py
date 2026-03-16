@@ -1,12 +1,11 @@
 """
-Расчёты по списку Record: общая сумма и разбивка по категориям.
-Результат передаётся в pdf_builder для генерации отчёта.
+Расчёты по списку записей: общая сумма и разбивка по категориям.
+Старый модуль, используется только в наследованных сценариях отчётов.
 """
 
 from dataclasses import dataclass
 from decimal import Decimal
-
-from parser.models import Record
+from typing import Any
 
 
 @dataclass
@@ -17,9 +16,10 @@ class CalculationResult:
     by_category: dict[str, Decimal]
 
 
-def calculate(records: list[Record]) -> CalculationResult:
+def calculate(records: list[Any]) -> CalculationResult:
     """
     Считает общую сумму и суммы по категориям.
+    Ожидается, что у элементов списка есть поля/атрибуты amount и category.
     При пустом списке возвращает total=0 и пустой by_category.
     """
     if not records:
