@@ -194,8 +194,35 @@ def _build_items_table(
         ["Товар", "Тара, тонна", "Нетто, тонна", "Брутто, тонна", "Цена", "Сумма"]
     ]
 
+    def _format_ton(value: Decimal) -> str:
+        """Тонны: запятая — разделитель дробной части, пробел — разрядность целой (каждые 3 цифры)."""
+        s = f"{value:.3f}"
+        int_part, _, frac_part = s.partition(".")
+        int_part = int_part or "0"
+        chunks = [
+            int_part[max(0, i - 3) : i]
+            for i in range(len(int_part), 0, -3)
+        ]
+        grouped = " ".join(reversed(chunks))
+        return f"{grouped},{frac_part}"
+
+    def _format_money(value: Decimal) -> str:
+        """Сумма/цена: 2 знака после запятой (тиыны), запятая как разделитель, пробел в целой части."""
+        s = f"{value:.2f}"
+        int_part, _, frac_part = s.partition(".")
+        int_part = int_part or "0"
+        chunks = [
+            int_part[max(0, i - 3) : i]
+            for i in range(len(int_part), 0, -3)
+        ]
+        grouped = " ".join(reversed(chunks))
+        return f"{grouped},{frac_part}"
+
     def kg_to_t(kg: int) -> str:
-        return f"{Decimal(kg) / Decimal('1000'):.3f}" if kg else ""
+        """Килограммы в тонны: запятая как разделитель, 3 знака после запятой, пробел в целой части."""
+        if not kg:
+            return ""
+        return _format_ton(Decimal(kg) / Decimal("1000"))
 
     data.append(
         [
@@ -203,8 +230,8 @@ def _build_items_table(
             kg_to_t(weighing.tara_kg),
             kg_to_t(weighing.netto_kg),
             kg_to_t(weighing.brutto_kg),
-            str(weighing.price_per_ton),
-            str(weighing.amount),
+            _format_money(weighing.price_per_ton),
+            _format_money(weighing.amount),
         ]
     )
     # Ширины колонок вычисляем пропорционально, чтобы сумма была ровно doc_width
