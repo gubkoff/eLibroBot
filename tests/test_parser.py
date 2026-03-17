@@ -1,81 +1,169 @@
-"""Тесты парсера сообщений."""
+"""Тесты парсера сообщений формата «ВЗВЕШИВАНИЕ № …» → WeighingData."""
 
 import pytest
-from datetime import date
+from datetime import datetime
 from decimal import Decimal
 
-from parser import parse_message, Record
+from parser import parse_message, WeighingData
 
 
-def test_parse_single_line_iso_date():
-    """Одна строка в формате YYYY-MM-DD сумма категория."""
-    result = parse_message("2025-02-26 100 продукты")
-    assert len(result) == 1
-    assert result[0].date == date(2025, 2, 26)
-    assert result[0].amount == Decimal("100")
-    assert result[0].category == "продукты"
+WEIGHING_SAMPLE = """
+ВЗВЕШИВАНИЕ № 3722
+Номер: 851EM02
+Тара: 18360
+Брутто: 45180
+Нетто: 26820
+Груз: Кузнецкий 0-300
+Контрагент: По контракту
+Накладная: №3722
+Цена за тонну: 16000
+Сумма, тг: 429120
+Дата взвешивания: 2026-03-14 09:32:04
+Пользователь: Руфина
+Сообщение отправлено: 2026-03-14 09:32:04
+""".strip()
 
 
-def test_parse_single_line_dot_date():
-    """Одна строка в формате DD.MM.YYYY сумма категория."""
-    result = parse_message("26.02.2025 250 транспорт")
-    assert len(result) == 1
-    assert result[0].date == date(2025, 2, 26)
-    assert result[0].amount == Decimal("250")
-    assert result[0].category == "транспорт"
+def test_parse_full_weighing():
+    """Полный валидный текст — один WeighingData с заполненными полями."""
+    result = parse_message(WEIGHING_SAMPLE)
+    assert result is not None
+    assert isinstance(result, WeighingData)
+    assert result.weighing_number == "3722"
+    assert result.plate_number == "851EM02"
+    assert result.tara_kg == 18360
+    assert result.brutto_kg == 45180
+    assert result.netto_kg == 26820
+    assert result.cargo == "Кузнецкий 0-300"
+    assert result.counterparty == "По контракту"
+    assert result.invoice_number == "3722"
+    assert result.price_per_ton == Decimal("16000")
+    assert result.amount == Decimal("429120")
+    assert result.weighing_datetime == datetime(2026, 3, 14, 9, 32, 4)
+    assert result.user == "Руфина"
+    assert result.message_sent_at == datetime(2026, 3, 14, 9, 32, 4)
 
 
-def test_parse_multiple_lines():
-    """Несколько валидных строк."""
+def test_parse_minimal_weighing():
+    """Минимум: заголовок ВЗВЕШИВАНИЕ и пара полей."""
     text = """
-2025-02-26 100 продукты
-2025-02-27 50  кофе
-26.02.2025 300 услуги
-"""
+ВЗВЕШИВАНИЕ № 100
+Груз: Уголь
+Сумма: 50000
+""".strip()
     result = parse_message(text)
-    assert len(result) == 3
-    assert result[0].category == "продукты"
-    assert result[1].category == "кофе"
-    assert result[2].amount == Decimal("300")
+    assert result is not None
+    assert result.weighing_number == "100"
+    assert result.cargo == "Уголь"
+    assert result.amount == Decimal("50000")
+    assert result.tara_kg == 0
+    assert result.netto_kg == 0
+    assert result.price_per_ton == Decimal("0")
+    assert result.weighing_datetime is None
 
 
-def test_parse_amount_with_decimal():
-    """Сумма с десятичной частью (точка или запятая)."""
-    result = parse_message("2025-02-26 99.50 продукты")
-    assert len(result) == 1
-    assert result[0].amount == Decimal("99.50")
-    result2 = parse_message("2025-02-26 99,25 товары")
-    assert len(result2) == 1
-    assert result2[0].amount == Decimal("99.25")
+def test_parse_weighing_number_from_header():
+    """Номер взвешивания из первой строки."""
+    result = parse_message("ВЗВЕШИВАНИЕ № 999\nГруз: X\nСумма: 1")
+    assert result is not None
+    assert result.weighing_number == "999"
+
+    result2 = parse_message("ВЗВЕШИВАНИЕ № ABC-1\nГруз: X\nСумма: 1")
+    assert result2 is not None
+    assert result2.weighing_number == "ABC-1"
 
 
-def test_parse_category_multiple_words():
-    """Категория из нескольких слов."""
-    result = parse_message("2025-02-26 100 продукты питания")
-    assert len(result) == 1
-    assert result[0].category == "продукты питания"
-
-
-def test_parse_invalid_line_skipped():
-    """Невалидная строка пропускается, остальные парсятся."""
+def test_parse_key_aliases():
+    """Синонимы ключей: Товар→cargo, Покупатель→counterparty, Цена/т и т.д."""
     text = """
-2025-02-26 100 продукты
-not-a-date 50 категория
-2025-02-27 200 другое
-"""
+ВЗВЕШИВАНИЕ № 1
+Товар: Щебень
+Покупатель: ООО Рога
+Цена/т: 2000
+Сумма, kzt: 100 500,50
+""".strip()
     result = parse_message(text)
-    assert len(result) == 2
-    assert result[0].category == "продукты"
-    assert result[1].category == "другое"
+    assert result is not None
+    assert result.cargo == "Щебень"
+    assert result.counterparty == "ООО Рога"
+    assert result.price_per_ton == Decimal("2000")
+    assert result.amount == Decimal("100500.50")
+
+
+def test_parse_int_with_spaces():
+    """Целые числа с пробелами как разделителями тысяч."""
+    text = """
+ВЗВЕШИВАНИЕ № 1
+Тара: 18 360
+Брутто: 45 180
+Нетто: 26 820
+Груз: X
+Сумма: 429 120
+""".strip()
+    result = parse_message(text)
+    assert result is not None
+    assert result.tara_kg == 18360
+    assert result.brutto_kg == 45180
+    assert result.netto_kg == 26820
+    assert result.amount == Decimal("429120")
+
+
+def test_parse_decimal_comma():
+    """Сумма/цена с запятой как десятичным разделителем."""
+    text = """
+ВЗВЕШИВАНИЕ № 1
+Груз: X
+Цена за тонну: 16 000,50
+Сумма: 50 483,00
+""".strip()
+    result = parse_message(text)
+    assert result is not None
+    assert result.price_per_ton == Decimal("16000.50")
+    assert result.amount == Decimal("50483.00")
 
 
 def test_parse_empty_string():
-    """Пустая строка — пустой список."""
-    assert parse_message("") == []
-    assert parse_message("   \n  ") == []
+    """Пустая строка или только пробелы — None."""
+    assert parse_message("") is None
+    assert parse_message("   \n  \n  ") is None
 
 
-def test_parse_too_few_parts_skipped():
-    """Строка без категории пропускается."""
-    result = parse_message("2025-02-26 100")
-    assert len(result) == 0
+def test_parse_no_colon_lines_ignored():
+    """Строки без «Ключ: значение» не ломают парсер."""
+    text = """
+ВЗВЕШИВАНИЕ № 1
+Груз: Уголь
+просто текст без двоеточия
+Сумма: 1000
+""".strip()
+    result = parse_message(text)
+    assert result is not None
+    assert result.cargo == "Уголь"
+    assert result.amount == Decimal("1000")
+
+
+def test_parse_unknown_keys_skipped():
+    """Неизвестные ключи пропускаются, известные парсятся."""
+    text = """
+ВЗВЕШИВАНИЕ № 1
+Груз: Уголь
+КакойтоПоле: игнор
+Сумма: 999
+""".strip()
+    result = parse_message(text)
+    assert result is not None
+    assert result.cargo == "Уголь"
+    assert result.amount == Decimal("999")
+
+
+def test_parse_invoice_number_strips_no():
+    """В номере накладной убирается префикс №."""
+    text = """
+ВЗВЕШИВАНИЕ № 1
+Накладная: №3722
+Груз: X
+Сумма: 1
+""".strip()
+    result = parse_message(text)
+    assert result is not None
+    assert result.invoice_number == "3722"

@@ -39,30 +39,41 @@ async def cmd_start(message: Message) -> None:
 @dp.message(Command("parse"))
 async def cmd_parse(message: Message) -> None:
     """
-    Временная команда для проверки парсера в Telegram.
-    Использование: /parse дата сумма категория (можно несколько строк).
+    Команда для проверки парсера: текст формата «ВЗВЕШИВАНИЕ № …» → структура WeighingData.
     """
     parts = message.text.split(maxsplit=1)
     text = parts[1].strip() if len(parts) > 1 else ""
     if not text:
         await message.answer(
             "Отправьте текст для разбора после команды.\n\n"
-            "Формат строки: дата сумма категория\n"
-            "Разделители: пробел, запятая, табуляция.\n"
-            "Дата: YYYY-MM-DD или DD.MM.YYYY.\n\n"
-            "Пример:\n<code>/parse 2025-02-26 100 продукты</code>\n"
-            "Или несколько строк:\n<code>/parse\n2025-02-26 100 продукты\n2025-02-27 200 транспорт</code>"
+            "Формат: первая строка <code>ВЗВЕШИВАНИЕ № номер</code>, далее строки <code>Ключ: значение</code>.\n"
+            "Ключи: Номер, Тара, Брутто, Нетто, Груз, Контрагент, Накладная, Цена за тонну, Сумма (тг), "
+            "Дата взвешивания, Пользователь, Сообщение отправлено.\n\n"
+            "Пример:\n<code>/parse ВЗВЕШИВАНИЕ № 3722\nНомер: 851EM02\nТара: 18360\nБрутто: 45180\n"
+            "Нетто: 26820\nГруз: Уголь\nСумма, тг: 429120</code>"
         )
         return
-    records = parse_message(text)
-    if not records:
-        await message.answer("Не удалось извлечь ни одной записи. Проверьте формат (дата сумма категория).")
+    data = parse_message(text)
+    if data is None:
+        await message.answer("Не удалось разобрать данные взвешивания. Проверьте формат (ВЗВЕШИВАНИЕ № … и ключи со значениями).")
         return
-    lines = []
-    for i, r in enumerate(records, 1):
-        lines.append(f"{i}. {r.date} — {r.amount} — {r.category}")
-    total = sum(r.amount for r in records)
-    reply = "Распознано записей: " + str(len(records)) + "\n\n" + "\n".join(lines) + "\n\nИтого: " + str(total)
+    dt_fmt = "%Y-%m-%d %H:%M:%S"
+    lines = [
+        f"№ взвешивания: {data.weighing_number or '—'}",
+        f"Номер авто: {data.plate_number or '—'}",
+        f"Тара, кг: {data.tara_kg}",
+        f"Брутто, кг: {data.brutto_kg}",
+        f"Нетто, кг: {data.netto_kg}",
+        f"Груз: {data.cargo or '—'}",
+        f"Контрагент: {data.counterparty or '—'}",
+        f"Накладная: {data.invoice_number or '—'}",
+        f"Цена за тонну: {data.price_per_ton}",
+        f"Сумма: {data.amount}",
+        f"Дата взвешивания: {data.weighing_datetime.strftime(dt_fmt) if data.weighing_datetime else '—'}",
+        f"Пользователь: {data.user or '—'}",
+        f"Сообщение отправлено: {data.message_sent_at.strftime(dt_fmt) if data.message_sent_at else '—'}",
+    ]
+    reply = "Распознано взвешивание:\n\n" + "\n".join(lines)
     await message.answer(reply)
 
 

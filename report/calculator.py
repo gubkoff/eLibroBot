@@ -1,6 +1,6 @@
 """
 Расчёты по списку записей: общая сумма и разбивка по категориям.
-Старый модуль, используется только в наследованных сценариях отчётов.
+Элементы списка должны иметь атрибуты amount (Decimal) и category (str).
 """
 
 from dataclasses import dataclass
@@ -10,7 +10,7 @@ from typing import Any
 
 @dataclass
 class CalculationResult:
-    """Результат расчёта по записям: общая сумма и суммы по категориям."""
+    """Результат расчёта: общая сумма и суммы по категориям."""
 
     total: Decimal
     by_category: dict[str, Decimal]
@@ -19,7 +19,7 @@ class CalculationResult:
 def calculate(records: list[Any]) -> CalculationResult:
     """
     Считает общую сумму и суммы по категориям.
-    Ожидается, что у элементов списка есть поля/атрибуты amount и category.
+    У каждого элемента records должны быть атрибуты amount и category.
     При пустом списке возвращает total=0 и пустой by_category.
     """
     if not records:
