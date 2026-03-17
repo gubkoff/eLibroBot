@@ -12,7 +12,6 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
 from reportlab.platypus.tables import TableStyle
-from reportlab.pdfgen import canvas
 
 from parser.models import WeighingData
 from report.calculator import CalculationResult
@@ -53,10 +52,10 @@ def build_pdf(
     doc = SimpleDocTemplate(
         str(path),
         pagesize=A4,
-        rightMargin=8 * mm,
-        leftMargin=8 * mm,
+        rightMargin=10 * mm,
+        leftMargin=10 * mm,
         topMargin=10 * mm,
-        bottomMargin=25 * mm,
+        bottomMargin=15 * mm,
     )
     styles = getSampleStyleSheet()
     styles["Normal"].fontName = font_name
@@ -79,26 +78,32 @@ def build_pdf(
     if not doc_date:
         doc_date = meta.get("doc_date") or datetime.now().strftime("%d.%m.%Y")
     header_text = f"{title} № {doc_number} от {doc_date} г." if doc_number else f"{title} от {doc_date} г."
-    title_style = ParagraphStyle(
-        "CustomTitle",
-        parent=styles["Heading1"],
-        fontName=font_bold,
-        fontSize=16,
-        spaceAfter=-10,
+    # Заголовок в виде таблицы с одним столбцом
+    header_table = Table([[header_text]], colWidths=[doc.width], rowHeights=[20])
+    header_table.hAlign = "LEFT"
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), font_bold),
+                ("FONTSIZE", (0, 0), (-1, -1), 16),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LINEBELOW", (0, 0), (-1, -1), 2.0, colors.black),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
     )
-    story.append(Paragraph(header_text, title_style))
-
-
-    line_style = ParagraphStyle(
-        "Line",
-        parent=styles["Normal"],
-        fontName=font_bold,
-        fontSize=40,
-    )
-    story.append(Paragraph(full_line, line_style))
+    story.append(header_table)
 
     # Реквизиты поставщика и покупателя
-    supplier = meta.get("supplier") or meta.get("supplier_name") or ""
+    supplier = (
+        meta.get("supplier")
+        or meta.get("supplier_name")
+        or 'Товарищество с ограниченной ответственностью "КазТим Комир"'
+    )
     buyer = meta.get("buyer") or meta.get("buyer_name") or ""
     if weighing is not None:
         # Покупатель: контрагент + номер авто
@@ -117,7 +122,7 @@ def build_pdf(
 
     # Таблица позиций
     if weighing is not None:
-        story.append(_build_items_table(weighing, font_name, font_bold))
+        story.append(_build_items_table(weighing, font_name, font_bold, doc.width))
         story.append(Spacer(1, 4 * mm))
 
     # Итог по накладной
@@ -151,7 +156,9 @@ def build_pdf(
     return path
 
 
-def _build_items_table(weighing: WeighingData, font_name: str, font_bold: str) -> Table:
+def _build_items_table(
+    weighing: WeighingData, font_name: str, font_bold: str, doc_width: float
+) -> Table:
     """Создаёт таблицу с позициями накладной по данным WeighingData."""
     data: list[list[str]] = [
         ["Товар", "Тара, тонна", "Нетто, тонна", "Брутто, тонна", "Цена", "Сумма"]
@@ -170,10 +177,12 @@ def _build_items_table(weighing: WeighingData, font_name: str, font_bold: str) -
             str(weighing.amount),
         ]
     )
-    table = Table(
-        data,
-        colWidths=[60 * mm, 25 * mm, 25 * mm, 25 * mm, 25 * mm, 30 * mm],
-    )
+    # Ширины колонок вычисляем пропорционально, чтобы сумма была ровно doc_width
+    base = [60, 25, 25, 25, 25, 30]  # как было, в "весах"
+    total = sum(base)
+    col_widths = [(w / total) * doc_width for w in base]
+    table = Table(data, colWidths=col_widths)
+    table.hAlign = "LEFT"
     table.setStyle(
         TableStyle(
             [
