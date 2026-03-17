@@ -54,7 +54,7 @@ def build_pdf(
         pagesize=A4,
         rightMargin=10 * mm,
         leftMargin=10 * mm,
-        topMargin=10 * mm,
+        topMargin=15 * mm,
         bottomMargin=15 * mm,
     )
     styles = getSampleStyleSheet()
@@ -98,7 +98,7 @@ def build_pdf(
     )
     story.append(header_table)
 
-    # Реквизиты поставщика и покупателя
+    # Реквизиты поставщика и покупателя — таблица: столбец 1 — описание, столбец 2 — текст
     supplier = (
         meta.get("supplier")
         or meta.get("supplier_name")
@@ -106,19 +106,35 @@ def build_pdf(
     )
     buyer = meta.get("buyer") or meta.get("buyer_name") or ""
     if weighing is not None:
-        # Покупатель: контрагент + номер авто
         buyer_parts: list[str] = []
         if weighing.counterparty:
             buyer_parts.append(weighing.counterparty)
         if weighing.plate_number:
-            buyer_parts.append(f"авто {weighing.plate_number}")
+            buyer_parts.append(f"номер авто {weighing.plate_number}")
         buyer = ", ".join(buyer_parts) or buyer
-    if supplier:
-        story.append(Paragraph(f"Поставщик: {supplier}", styles["Normal"]))
+    col_label = 63 * mm
+    col_value = doc.width - col_label
+    parties_data: list[list[str]] = [["Поставщик", supplier]]
     if buyer:
-        story.append(Paragraph(f"Покупатель: {buyer}", styles["Normal"]))
-    if supplier or buyer:
-        story.append(Spacer(1, 4 * mm))
+        parties_data.append(["Покупатель", buyer])
+    parties_table = Table(parties_data, colWidths=[col_label, col_value])
+    parties_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (0, -1), font_name),
+                ("FONTNAME", (1, 0), (1, -1), font_bold),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (1, 0), (1, -1), "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+    story.append(Spacer(1, 10))
+    story.append(parties_table)
+    story.append(Spacer(1, 4 * mm))
 
     # Таблица позиций
     if weighing is not None:
@@ -144,10 +160,24 @@ def build_pdf(
     # nds_amount = Decimal("0.00")
     # story.append(Paragraph(f"В том числе НДС: {nds_amount}", styles["Normal"]))
 
-    # Подписи
+    # Подписи: таблица — отпустил (левый столбец), получил (правый)
     story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph("Отпустил ________________________", styles["Normal"]))
-    story.append(Paragraph("Получил _________________________", styles["Normal"]))
+    signs_data = [["Отпустил ________________________", "Получил _________________________"]]
+    signs_table = Table(signs_data, colWidths=[doc.width / 2, doc.width / 2])
+    signs_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), font_bold),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+    story.append(signs_table)
 
     # Дублируем весь контент страницы два раза
     story = story + [Spacer(1, 10 * mm)] + story
@@ -188,14 +218,16 @@ def _build_items_table(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#ffffff")),
                 ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
                 ("ALIGN", (1, 1), (-2, -1), "RIGHT"),
                 ("ALIGN", (-1, 1), (-1, -1), "RIGHT"),
                 ("FONTNAME", (0, 0), (-1, -1), font_name),
                 ("FONTNAME", (0, 0), (-1, 0), font_bold),
                 ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, 0), 11),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 11),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.gray),
                 ("BOX", (0, 0), (-1, -1), 1.5, colors.black),
             ]
