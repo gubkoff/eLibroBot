@@ -307,7 +307,7 @@ def build_pdf(
 
     # Подписи: таблица — отпустил (левый столбец), получил (правый)
     story.append(Spacer(1, 6 * mm))
-    signs_data = [["Отпустил ________________________", "Получил _________________________"]]
+    signs_data = [["Отпустил ________________________", "Получил ________________________"]]
     signs_table = Table(signs_data, colWidths=[doc.width / 2, doc.width / 2])
     signs_table.setStyle(
         TableStyle(
@@ -336,12 +336,21 @@ def _build_items_table(
 ) -> Table:
     """Создаёт таблицу с позициями накладной по данным WeighingData."""
     data: list[list[str]] = [
-        ["Товар", "Тара, тонна", "Нетто, тонна", "Брутто, тонна", "Цена", "Сумма"]
+        [
+            "Товар",
+            "Единицы\nизмерения",
+            "Тара",
+            "Нетто",
+            "Брутто",
+            "Цена",
+            "Сумма",
+        ]
     ]
 
     def _format_ton(value: Decimal) -> str:
-        """Тонны: запятая как разделитель дробной части, 3 знака после запятой, без пробелов."""
+        """Тонны: запятая как разделитель, до 3 знаков, без хвостовых нулей."""
         s = f"{value:.3f}".replace(".", ",")
+        s = s.rstrip("0").rstrip(",")
         return s
 
     def kg_to_t(kg: int) -> str:
@@ -360,6 +369,7 @@ def _build_items_table(
     data.append(
         [
             weighing.cargo,
+            "тонны",
             kg_to_t(weighing.tara_kg),
             kg_to_t(netto_kg),
             kg_to_t(brutto_kg),
@@ -368,7 +378,7 @@ def _build_items_table(
         ]
     )
     # Ширины колонок вычисляем пропорционально, чтобы сумма была ровно doc_width
-    base = [60, 25, 25, 25, 25, 30]  # как было, в "весах"
+    base = [55, 20, 16, 20, 20, 20, 27]
     total = sum(base)
     col_widths = [(w / total) * doc_width for w in base]
     table = Table(data, colWidths=col_widths)
@@ -379,7 +389,8 @@ def _build_items_table(
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#ffffff")),
                 ("ALIGN", (0, 0), (-1, 0), "CENTER"),
                 ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
-                ("ALIGN", (1, 1), (-2, -1), "RIGHT"),
+                ("ALIGN", (1, 0), (1, -1), "CENTER"),
+                ("ALIGN", (2, 1), (-2, -1), "RIGHT"),
                 ("ALIGN", (-1, 1), (-1, -1), "RIGHT"),
                 ("FONTNAME", (0, 0), (-1, -1), font_name),
                 ("FONTNAME", (0, 0), (-1, 0), font_bold),
