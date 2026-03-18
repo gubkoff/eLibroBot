@@ -350,12 +350,19 @@ def _build_items_table(
             return ""
         return _format_ton(Decimal(kg) / Decimal("1000"))
 
+    netto_kg = weighing.adjusted_netto_kg or weighing.netto_kg
+    brutto_kg = (
+        weighing.tara_kg + weighing.adjusted_netto_kg
+        if weighing.adjusted_netto_kg
+        else weighing.brutto_kg
+    )
+
     data.append(
         [
             weighing.cargo,
             kg_to_t(weighing.tara_kg),
-            kg_to_t(weighing.netto_kg),
-            kg_to_t(weighing.brutto_kg),
+            kg_to_t(netto_kg),
+            kg_to_t(brutto_kg),
             _format_money(weighing.price_per_ton),
             _format_money(weighing.amount),
         ]
