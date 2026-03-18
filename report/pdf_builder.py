@@ -2,6 +2,7 @@ import logging
 import tempfile
 from datetime import datetime
 from decimal import Decimal
+import os
 from pathlib import Path
 from typing import Any, List, Optional
 from xml.sax.saxutils import escape
@@ -180,9 +181,6 @@ def build_pdf(
     реквизиты поставщика и покупателя, таблицу позиций и итоги.
     Возвращает путь к временному файлу PDF (его нужно удалить после отправки).
     """
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-    path = Path(tmp.name)
-    tmp.close()
 
     # Регистрируем шрифт с поддержкой кириллицы (DejaVuSans или Arial, если найден).
     # Используем зарегистрированные имена, чтобы ReportLab корректно применял начертания.
@@ -190,10 +188,11 @@ def build_pdf(
     font_name = CYRILLIC_FONT_NAME if has_cyrillic_font else "Helvetica"
     font_bold = CYRILLIC_FONT_BOLD_NAME if has_cyrillic_font else "Helvetica-Bold"
 
-    left_margin = 10 * mm
-    right_margin = 10 * mm
+    # Поля A4 (мм): 15 мм со всех сторон
+    left_margin = 15 * mm
+    right_margin = 15 * mm
     top_margin = 15 * mm
-    bottom_margin = 15 * mm
+    bottom_margin = 25 * mm
 
     page_width, page_height = A4
     content_width = page_width - left_margin - right_margin
@@ -294,7 +293,7 @@ def build_pdf(
         if weighing.plate_number:
             buyer_parts.append(f"номер авто {weighing.plate_number}")
         buyer = ", ".join(buyer_parts) or buyer
-    col_label = 63 * mm
+    col_label = 23 * mm
     col_value = content_width - col_label
     parties_data: list[list[str]] = [["Поставщик", supplier]]
     if buyer:
@@ -330,7 +329,7 @@ def build_pdf(
         ["Итого:", _format_money(total)],
         ["В том числе НДС:", _format_money(nds_amount)],
     ]
-    total_table_label_width = 165 * mm;
+    total_table_label_width = 155 * mm;
     total_table = Table(
         total_data,
         colWidths=[total_table_label_width, content_width - total_table_label_width],
@@ -364,15 +363,24 @@ def build_pdf(
         fontName=font_name,
         fontSize=10,
     )
-    summary_data = [[Paragraph(row1_text, summary_style)], [row2_text]]
+    amount_words_style = ParagraphStyle(
+        "AmountWordsRow",
+        parent=styles["Normal"],
+        fontName=font_bold,
+        fontSize=10,
+        leading=12,
+    )
+    # Paragraph автоматически перенесёт “сумму прописью” на новую строку при нехватке ширины.
+    summary_data = [
+        [Paragraph(row1_text, summary_style)],
+        [Paragraph(row2_text, amount_words_style)],
+    ]
     summary_table = Table(summary_data, colWidths=[content_width])
     summary_table.setStyle(
         TableStyle(
             [
                 ("FONTNAME", (0, 0), (-1, -1), font_name),
-                ("FONTNAME", (0, 1), (-1, 1), font_bold),
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("FONTSIZE", (0, 1), (-1, 1), 10),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
@@ -404,15 +412,21 @@ def build_pdf(
 
     # Сначала пытаемся сверстать 2 копии на одном листе (верх/низ).
     # Если ReportLab не может уложить контент (LayoutError) — печатаем вторую копию на следующей странице сверху.
+    tmp_double = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    path_double = Path(tmp_double.name)
+    tmp_double.close()
     doc_double = BaseDocTemplate(
-        str(path),
+        str(path_double),
         pagesize=A4,
         leftMargin=left_margin,
         rightMargin=right_margin,
         topMargin=top_margin,
         bottomMargin=bottom_margin,
         pageTemplates=[
-            PageTemplate(id="double", frames=[top_frame, bottom_frame]),
+            PageTemplate(
+                id="double",
+                frames=[top_frame, bottom_frame],
+            ),
         ],
     )
     story_double: list[Any] = []
@@ -433,9 +447,15 @@ def build_pdf(
 
     try:
         doc_double.build(story_double)
+        return path_double
     except LayoutError:
+        if os.path.isfile(path_double):
+            try:
+                os.remove(path_double)
+            except OSError:
+                logger.warning("Не удалось удалить временный PDF (double) %s", path_double)
         doc_single = BaseDocTemplate(
-            str(path),
+            str(path_double),
             pagesize=A4,
             leftMargin=left_margin,
             rightMargin=right_margin,
@@ -447,8 +467,7 @@ def build_pdf(
         )
         story_single = list(block_story) + [PageBreak()] + list(block_story)
         doc_single.build(story_single)
-
-    return path
+        return path_double
 
 
 def _build_items_table(
@@ -504,7 +523,7 @@ def _build_items_table(
         ]
     )
     # Ширины колонок вычисляем пропорционально, чтобы сумма была ровно doc_width
-    base = [55, 20, 16, 20, 20, 20, 27]
+    base = [55, 20, 16, 16, 16, 26, 26]
     total = sum(base)
     col_widths = [(w / total) * doc_width for w in base]
     table = Table(data, colWidths=col_widths)
