@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, List, Optional
+from xml.sax.saxutils import escape
 
 
 from reportlab.lib import colors
@@ -130,6 +131,26 @@ def _amount_to_words(value: Decimal) -> str:
     tyiyn = int(round((value - int_part) * 100))
     words = _int_to_words_ru(int_part)
     return f"{words} тенге {tyiyn:02d} тиын"
+
+
+def _format_cargo_for_cell(text: str) -> str:
+    """
+    Форматирует название товара для ячейки таблицы:
+    если слово начинается с заглавной буквы и оно не первое — вставляем перенос строки.
+    Возвращает строку с HTML-переносами <br/>, безопасную для Paragraph.
+    """
+    text = (text or "").strip()
+    if not text:
+        return ""
+    parts = text.split()
+    out: list[str] = []
+    for i, w in enumerate(parts):
+        w_escaped = escape(w)
+        if i > 0 and w and w[0].isupper():
+            out.append("<br/>" + w_escaped)
+        else:
+            out.append(w_escaped)
+    return " ".join(out)
 
 
 def build_pdf(
@@ -338,7 +359,7 @@ def _build_items_table(
     data: list[list[str]] = [
         [
             "Товар",
-            "Единицы\nизмерения",
+            "Единица\nизмерения",
             "Тара",
             "Нетто",
             "Брутто",
@@ -346,6 +367,12 @@ def _build_items_table(
             "Сумма",
         ]
     ]
+    cargo_style = ParagraphStyle(
+        "CargoCell",
+        fontName=font_name,
+        fontSize=10,
+        leading=11,
+    )
 
     def _format_ton(value: Decimal) -> str:
         """Тонны: запятая как разделитель, до 3 знаков, без хвостовых нулей."""
@@ -368,8 +395,8 @@ def _build_items_table(
 
     data.append(
         [
-            weighing.cargo,
-            "тонны",
+            Paragraph(_format_cargo_for_cell(weighing.cargo), cargo_style),
+            "тонна",
             kg_to_t(weighing.tara_kg),
             kg_to_t(netto_kg),
             kg_to_t(brutto_kg),
@@ -388,7 +415,7 @@ def _build_items_table(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#ffffff")),
                 ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-                ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("ALIGN", (1, 0), (1, -1), "CENTER"),
                 ("ALIGN", (2, 1), (-2, -1), "RIGHT"),
                 ("ALIGN", (-1, 1), (-1, -1), "RIGHT"),
