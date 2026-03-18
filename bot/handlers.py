@@ -58,9 +58,17 @@ async def pipeline_handler(message: Message) -> None:
                     "Сделайте бота администратором группы-получателя с правом «Отправка сообщений»."
                 )
             else:
-                await message.reply(f"Ошибка при формировании отчёта: {err_text}")
+                await message.reply(
+                    "Ошибка при формировании отчёта:\n"
+                    f"{err_text}"
+                )
         except Exception:
-            pass
+            logger.warning(
+                "Не удалось отправить сообщение об ошибке пользователю (chat_id=%s, message_id=%s).",
+                getattr(message.chat, "id", None),
+                getattr(message, "message_id", None),
+                exc_info=True,
+            )
     finally:
         if pdf_path is not None and os.path.isfile(pdf_path):
             try:
