@@ -13,6 +13,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus.doctemplate import LayoutError
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
@@ -412,6 +413,28 @@ def build_pdf(
 
     # Сначала пытаемся сверстать 2 копии на одном листе (верх/низ).
     # Если ReportLab не может уложить контент (LayoutError) — печатаем вторую копию на следующей странице сверху.
+    def _draw_cut_line(canvas, _doc) -> None:
+        """Пунктирная линия разреза строго посередине страницы (только для режима double)."""
+        canvas.saveState()
+        try:
+            canvas.setStrokeColor(colors.HexColor("#999999"))
+            canvas.setLineWidth(0.6)
+            canvas.setDash(3, 3)
+            # На 5 мм ниже границы между верхним и нижним фреймами
+            y = bottom_margin + frame_h - 5 * mm
+            canvas.line(left_margin, y, page_width - right_margin, y)
+        finally:
+            canvas.restoreState()
+
+    class _SinglePageOnlyCanvas(Canvas):
+        """Canvas, запрещающий появление 2+ страниц (для режима double)."""
+
+        def showPage(self) -> None:
+            # На второй странице (и далее) прекращаем сборку, чтобы переключиться на single-layout без линии.
+            if self.getPageNumber() >= 2:
+                raise LayoutError("Double layout produced more than one page")
+            return super().showPage()
+
     tmp_double = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     path_double = Path(tmp_double.name)
     tmp_double.close()
@@ -426,6 +449,7 @@ def build_pdf(
             PageTemplate(
                 id="double",
                 frames=[top_frame, bottom_frame],
+                onPage=_draw_cut_line,
             ),
         ],
     )
@@ -446,7 +470,7 @@ def build_pdf(
     )
 
     try:
-        doc_double.build(story_double)
+        doc_double.build(story_double, canvasmaker=_SinglePageOnlyCanvas)
         return path_double
     except LayoutError:
         if os.path.isfile(path_double):
