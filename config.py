@@ -1,5 +1,7 @@
 """Настройки приложения из переменных окружения и .env."""
 
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,5 +17,6 @@ class Settings(BaseSettings):
     TARGET_GROUP_ID: int
 
 
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
