@@ -11,12 +11,14 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.platypus.doctemplate import LayoutError
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
     FrameBreak,
     KeepInFrame,
     KeepTogether,
+    PageBreak,
     PageTemplate,
     Paragraph,
     Spacer,
@@ -222,17 +224,21 @@ def build_pdf(
         id="top",
     )
 
-    doc = BaseDocTemplate(
-        str(path),
-        pagesize=A4,
-        leftMargin=left_margin,
-        rightMargin=right_margin,
-        topMargin=top_margin,
-        bottomMargin=bottom_margin,
-        pageTemplates=[
-            PageTemplate(id="main", frames=[top_frame, bottom_frame]),
-        ],
+    # Один фрейм на страницу (когда 2 копии не помещаются на одном листе)
+    single_frame = Frame(
+        left_margin,
+        bottom_margin,
+        content_width,
+        content_height,
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
+        id="single",
     )
+
+    # doc и выбор шаблона определим после сборки block_story (нужно понять, помещается ли блок в половину листа)
+    doc: BaseDocTemplate
     styles = getSampleStyleSheet()
     styles["Normal"].fontName = font_name
     styles["Heading1"].fontName = font_bold
@@ -255,7 +261,7 @@ def build_pdf(
         doc_date = meta.get("doc_date") or datetime.now().strftime("%d.%m.%Y")
     header_text = f"{title} № {doc_number} от {doc_date} г." if doc_number else f"{title} от {doc_date} г."
     # Заголовок в виде таблицы с одним столбцом
-    header_table = Table([[header_text]], colWidths=[doc.width], rowHeights=[20])
+    header_table = Table([[header_text]], colWidths=[content_width], rowHeights=[20])
     header_table.hAlign = "LEFT"
     header_table.setStyle(
         TableStyle(
@@ -289,7 +295,7 @@ def build_pdf(
             buyer_parts.append(f"номер авто {weighing.plate_number}")
         buyer = ", ".join(buyer_parts) or buyer
     col_label = 63 * mm
-    col_value = doc.width - col_label
+    col_value = content_width - col_label
     parties_data: list[list[str]] = [["Поставщик", supplier]]
     if buyer:
         parties_data.append(["Покупатель", buyer])
@@ -325,7 +331,10 @@ def build_pdf(
         ["В том числе НДС:", _format_money(nds_amount)],
     ]
     total_table_label_width = 165 * mm;
-    total_table = Table(total_data, colWidths=[total_table_label_width, doc.width - total_table_label_width])
+    total_table = Table(
+        total_data,
+        colWidths=[total_table_label_width, content_width - total_table_label_width],
+    )
     total_table.hAlign = "LEFT"
     total_table.setStyle(
         TableStyle(
@@ -356,7 +365,7 @@ def build_pdf(
         fontSize=10,
     )
     summary_data = [[Paragraph(row1_text, summary_style)], [row2_text]]
-    summary_table = Table(summary_data, colWidths=[doc.width])
+    summary_table = Table(summary_data, colWidths=[content_width])
     summary_table.setStyle(
         TableStyle(
             [
@@ -377,7 +386,7 @@ def build_pdf(
     # Подписи: таблица — отпустил (левый столбец), получил (правый)
     block_story.append(Spacer(1, 6 * mm))
     signs_data = [["Отпустил ________________________", "Получил ________________________"]]
-    signs_table = Table(signs_data, colWidths=[doc.width / 2, doc.width / 2])
+    signs_table = Table(signs_data, colWidths=[content_width / 2, content_width / 2])
     signs_table.setStyle(
         TableStyle(
             [
@@ -393,15 +402,23 @@ def build_pdf(
     )
     block_story.append(signs_table)
 
-    # Две копии на одной странице:
-    # - первая попадает в верхний фрейм (по верху)
-    # - вторая после FrameBreak попадает в нижний фрейм и прижимается к низу (TopPadder)
-    story: list[Any] = []
-    story.extend(block_story)
-    story.append(FrameBreak())
-    # Bottom-aligned copy: keep the whole block at the bottom of the lower frame,
-    # but inside the block align content to the top (so the header stays on top).
-    story.append(
+    # Сначала пытаемся сверстать 2 копии на одном листе (верх/низ).
+    # Если ReportLab не может уложить контент (LayoutError) — печатаем вторую копию на следующей странице сверху.
+    doc_double = BaseDocTemplate(
+        str(path),
+        pagesize=A4,
+        leftMargin=left_margin,
+        rightMargin=right_margin,
+        topMargin=top_margin,
+        bottomMargin=bottom_margin,
+        pageTemplates=[
+            PageTemplate(id="double", frames=[top_frame, bottom_frame]),
+        ],
+    )
+    story_double: list[Any] = []
+    story_double.extend(block_story)
+    story_double.append(FrameBreak())
+    story_double.append(
         TopPadder(
             KeepInFrame(
                 content_width,
@@ -414,7 +431,23 @@ def build_pdf(
         )
     )
 
-    doc.build(story)
+    try:
+        doc_double.build(story_double)
+    except LayoutError:
+        doc_single = BaseDocTemplate(
+            str(path),
+            pagesize=A4,
+            leftMargin=left_margin,
+            rightMargin=right_margin,
+            topMargin=top_margin,
+            bottomMargin=bottom_margin,
+            pageTemplates=[
+                PageTemplate(id="single", frames=[single_frame]),
+            ],
+        )
+        story_single = list(block_story) + [PageBreak()] + list(block_story)
+        doc_single.build(story_single)
+
     return path
 
 
