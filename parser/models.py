@@ -13,7 +13,6 @@ class WeighingData:
     tara_kg: int
     brutto_kg: int
     netto_kg: int
-    adjusted_netto_kg: int  # вес (нетто) с корректировкой, если указан
     cargo: str
     counterparty: str
     invoice_number: str
@@ -22,3 +21,4 @@ class WeighingData:
     weighing_datetime: Optional[datetime]
     user: str
     message_sent_at: Optional[datetime]
+    adjusted_netto_kg: int = 0  # вес (нетто) с корректировкой, если указан

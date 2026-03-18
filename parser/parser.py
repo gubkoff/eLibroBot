@@ -166,7 +166,6 @@ def parse_message(text: str) -> Optional[WeighingData]:
         tara_kg=tara_kg,
         brutto_kg=brutto_kg,
         netto_kg=netto_kg,
-        adjusted_netto_kg=adjusted_netto_kg,
         cargo=cargo,
         counterparty=counterparty,
         invoice_number=invoice_number,
@@ -175,6 +174,7 @@ def parse_message(text: str) -> Optional[WeighingData]:
         weighing_datetime=weighing_datetime,
         user=user,
         message_sent_at=message_sent_at,
+        adjusted_netto_kg=adjusted_netto_kg,
     )
 
 
