@@ -45,7 +45,7 @@ async def pipeline_handler(message: Message) -> None:
         caption = f"Накладная № {doc_number} на сумму {data.amount}"
         await message.bot.send_document(
             chat_id=settings.TARGET_GROUP_ID,
-            document=FSInputFile(pdf_path, filename=f"report_{doc_number}.pdf"),
+            document=FSInputFile(pdf_path, filename=f"nakladn_{doc_number}.pdf"),
             caption=caption,
         )
     except Exception as e:
