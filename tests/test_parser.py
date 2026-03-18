@@ -90,6 +90,30 @@ def test_parse_key_aliases():
     assert result.amount == Decimal("100500.50")
 
 
+def test_parse_adjusted_weight():
+    """«Вес с корректировкой» парсится в adjusted_netto_kg и может отличаться от netto_kg."""
+    text = """
+ВЗВЕШИВАНИЕ № 3766
+Номер: 683BQ09
+Тара: 17200
+Брутто: 23140
+Нетто: 5940
+Вес с корректировкой: 6118
+Груз: Шубарколь 60-300 Грохот
+Контрагент: физическое лицо
+Накладная: №3766
+Цена за тонну: 19000
+Сумма, тг: 116242
+Дата взвешивания: 2026-03-16 14:53:44
+Пользователь: Руфина
+Сообщение отправлено 2026-03-16 14:53:44
+""".strip()
+    result = parse_message(text)
+    assert result is not None
+    assert result.netto_kg == 5940
+    assert result.adjusted_netto_kg == 6118
+
+
 def test_parse_int_with_spaces():
     """Целые числа с пробелами как разделителями тысяч."""
     text = """
@@ -120,6 +144,18 @@ def test_parse_decimal_comma():
     assert result is not None
     assert result.price_per_ton == Decimal("16000.50")
     assert result.amount == Decimal("50483.00")
+
+
+def test_amount_calculated_from_weight_and_price_when_sum_missing():
+    """Если сумма отсутствует, но есть вес и цена — amount рассчитывается автоматически."""
+    text = """
+ВЗВЕШИВАНИЕ № 1
+Нетто: 26820
+Цена за тонну: 16000
+""".strip()
+    result = parse_message(text)
+    assert result is not None
+    assert result.amount == Decimal("429120.00")
 
 
 def test_parse_empty_string():

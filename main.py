@@ -58,12 +58,18 @@ async def cmd_parse(message: Message) -> None:
         await message.answer("Не удалось разобрать данные взвешивания. Проверьте формат (ВЗВЕШИВАНИЕ № … и ключи со значениями).")
         return
     dt_fmt = "%Y-%m-%d %H:%M:%S"
+    brutto_display = (
+        data.tara_kg + data.adjusted_netto_kg
+        if data.adjusted_netto_kg
+        else data.brutto_kg
+    )
     lines = [
         f"№ взвешивания: {data.weighing_number or '—'}",
         f"Номер авто: {data.plate_number or '—'}",
         f"Тара, кг: {data.tara_kg}",
-        f"Брутто, кг: {data.brutto_kg}",
+        f"Брутто, кг: {brutto_display}",
         f"Нетто, кг: {data.netto_kg}",
+        f"Вес с корректировкой, кг: {data.adjusted_netto_kg or '—'}",
         f"Груз: {data.cargo or '—'}",
         f"Контрагент: {data.counterparty or '—'}",
         f"Накладная: {data.invoice_number or '—'}",

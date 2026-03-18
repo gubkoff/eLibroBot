@@ -18,6 +18,7 @@ KEY_ALIASES: dict[str, str] = {
     "тара": "tara_kg",
     "брутто": "brutto_kg",
     "нетто": "netto_kg",
+    "вес с корректировкой": "adjusted_netto_kg",
     # груз
     "груз": "cargo",
     "товар": "cargo",
@@ -138,6 +139,7 @@ def parse_message(text: str) -> Optional[WeighingData]:
     tara_kg = _parse_int_field(normalized.get("tara_kg", "")) or 0
     brutto_kg = _parse_int_field(normalized.get("brutto_kg", "")) or 0
     netto_kg = _parse_int_field(normalized.get("netto_kg", "")) or 0
+    adjusted_netto_kg = _parse_int_field(normalized.get("adjusted_netto_kg", "")) or 0
     cargo = normalized.get("cargo", "")
     counterparty = normalized.get("counterparty", "")
 
@@ -147,6 +149,11 @@ def parse_message(text: str) -> Optional[WeighingData]:
 
     price_per_ton = _parse_decimal_field(normalized.get("price_per_ton", "")) or Decimal("0")
     amount = _parse_decimal_field(normalized.get("amount", "")) or Decimal("0")
+    weight_for_amount_kg = adjusted_netto_kg or netto_kg
+    if price_per_ton and weight_for_amount_kg:
+        amount = (
+            (Decimal(weight_for_amount_kg) / Decimal("1000")) * price_per_ton
+        ).quantize(Decimal("0.01"))
 
     weighing_datetime = _parse_dt(normalized.get("weighing_datetime", "")) if "weighing_datetime" in normalized else None
     message_sent_at = _parse_dt(normalized.get("message_sent_at", "")) if "message_sent_at" in normalized else None
@@ -159,6 +166,7 @@ def parse_message(text: str) -> Optional[WeighingData]:
         tara_kg=tara_kg,
         brutto_kg=brutto_kg,
         netto_kg=netto_kg,
+        adjusted_netto_kg=adjusted_netto_kg,
         cargo=cargo,
         counterparty=counterparty,
         invoice_number=invoice_number,
