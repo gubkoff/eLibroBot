@@ -11,7 +11,18 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
+from reportlab.platypus import (
+    BaseDocTemplate,
+    Frame,
+    FrameBreak,
+    KeepInFrame,
+    KeepTogether,
+    PageTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TopPadder,
+)
 from reportlab.platypus.tables import TableStyle
 
 from parser.models import WeighingData
@@ -176,21 +187,58 @@ def build_pdf(
     has_cyrillic_font = register_cyrillic_font()
     font_name = CYRILLIC_FONT_NAME if has_cyrillic_font else "Helvetica"
     font_bold = CYRILLIC_FONT_BOLD_NAME if has_cyrillic_font else "Helvetica-Bold"
-    
-    doc = SimpleDocTemplate(
+
+    left_margin = 10 * mm
+    right_margin = 10 * mm
+    top_margin = 15 * mm
+    bottom_margin = 15 * mm
+
+    page_width, page_height = A4
+    content_width = page_width - left_margin - right_margin
+    content_height = page_height - top_margin - bottom_margin
+
+    # Два вертикальных фрейма: верхний — 1-я копия, нижний — 2-я копия (прижата к низу через TopPadder)
+    frame_h = content_height / 2
+    bottom_frame = Frame(
+        left_margin,
+        bottom_margin,
+        content_width,
+        frame_h,
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
+        id="bottom",
+    )
+    top_frame = Frame(
+        left_margin,
+        bottom_margin + frame_h,
+        content_width,
+        frame_h,
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
+        id="top",
+    )
+
+    doc = BaseDocTemplate(
         str(path),
         pagesize=A4,
-        rightMargin=10 * mm,
-        leftMargin=10 * mm,
-        topMargin=15 * mm,
-        bottomMargin=15 * mm,
+        leftMargin=left_margin,
+        rightMargin=right_margin,
+        topMargin=top_margin,
+        bottomMargin=bottom_margin,
+        pageTemplates=[
+            PageTemplate(id="main", frames=[top_frame, bottom_frame]),
+        ],
     )
     styles = getSampleStyleSheet()
     styles["Normal"].fontName = font_name
     styles["Heading1"].fontName = font_bold
     styles["Heading2"].fontName = font_bold
 
-    story = []
+    block_story: list[Any] = []
 
     # Header: накладная № … от …
     doc_number = ""
@@ -224,7 +272,7 @@ def build_pdf(
             ]
         )
     )
-    story.append(header_table)
+    block_story.append(header_table)
 
     # Реквизиты поставщика и покупателя — таблица: столбец 1 — описание, столбец 2 — текст
     supplier = (
@@ -260,14 +308,14 @@ def build_pdf(
             ]
         )
     )
-    story.append(Spacer(1, 10))
-    story.append(parties_table)
-    story.append(Spacer(1, 4 * mm))
+    block_story.append(Spacer(1, 10))
+    block_story.append(parties_table)
+    block_story.append(Spacer(1, 4 * mm))
 
     # Таблица позиций
     if weighing is not None:
-        story.append(_build_items_table(weighing, font_name, font_bold, doc.width))
-        story.append(Spacer(1, 4 * mm))
+        block_story.append(_build_items_table(weighing, font_name, font_bold, content_width))
+        block_story.append(Spacer(1, 4 * mm))
 
     # Итог по накладной — таблица: первый столбец «Итого», второй — число (оформлено как деньги)
     total = calculation_result.total
@@ -293,8 +341,8 @@ def build_pdf(
             ]
         )
     )
-    story.append(total_table)
-    story.append(Spacer(1, 5 * mm))
+    block_story.append(total_table)
+    block_story.append(Spacer(1, 5 * mm))
 
     # Всего наименований и сумма прописью — таблица под итогом
     items_count = 1 if weighing is not None else len(records) or 0
@@ -323,11 +371,11 @@ def build_pdf(
             ]
         )
     )
-    story.append(summary_table)
-    story.append(Spacer(1, 10 * mm))
+    block_story.append(summary_table)
+    block_story.append(Spacer(1, 10 * mm))
 
     # Подписи: таблица — отпустил (левый столбец), получил (правый)
-    story.append(Spacer(1, 6 * mm))
+    block_story.append(Spacer(1, 6 * mm))
     signs_data = [["Отпустил ________________________", "Получил ________________________"]]
     signs_table = Table(signs_data, colWidths=[doc.width / 2, doc.width / 2])
     signs_table.setStyle(
@@ -343,10 +391,28 @@ def build_pdf(
             ]
         )
     )
-    story.append(signs_table)
+    block_story.append(signs_table)
 
-    # Дублируем весь контент страницы два раза
-    story = story + [Spacer(1, 50 * mm)] + story
+    # Две копии на одной странице:
+    # - первая попадает в верхний фрейм (по верху)
+    # - вторая после FrameBreak попадает в нижний фрейм и прижимается к низу (TopPadder)
+    story: list[Any] = []
+    story.extend(block_story)
+    story.append(FrameBreak())
+    # Bottom-aligned copy: keep the whole block at the bottom of the lower frame,
+    # but inside the block align content to the top (so the header stays on top).
+    story.append(
+        TopPadder(
+            KeepInFrame(
+                content_width,
+                frame_h,
+                list(block_story),
+                mode="shrink",
+                hAlign="LEFT",
+                vAlign="TOP",
+            )
+        )
+    )
 
     doc.build(story)
     return path
