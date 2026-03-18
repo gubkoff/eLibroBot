@@ -340,16 +340,9 @@ def _build_items_table(
     ]
 
     def _format_ton(value: Decimal) -> str:
-        """Тонны: запятая — разделитель дробной части, пробел — разрядность целой (каждые 3 цифры)."""
-        s = f"{value:.3f}"
-        int_part, _, frac_part = s.partition(".")
-        int_part = int_part or "0"
-        chunks = [
-            int_part[max(0, i - 3) : i]
-            for i in range(len(int_part), 0, -3)
-        ]
-        grouped = " ".join(reversed(chunks))
-        return f"{grouped},{frac_part}"
+        """Тонны: запятая как разделитель дробной части, 3 знака после запятой, без пробелов."""
+        s = f"{value:.3f}".replace(".", ",")
+        return s
 
     def kg_to_t(kg: int) -> str:
         """Килограммы в тонны: запятая как разделитель, 3 знака после запятой, пробел в целой части."""
