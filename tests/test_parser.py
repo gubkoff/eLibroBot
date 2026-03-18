@@ -1,6 +1,5 @@
 """Тесты парсера сообщений формата «ВЗВЕШИВАНИЕ № …» → WeighingData."""
 
-import pytest
 from datetime import datetime
 from decimal import Decimal
 

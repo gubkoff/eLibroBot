@@ -3,8 +3,6 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-import pytest
-
 from report import calculate, CalculationResult
 
 

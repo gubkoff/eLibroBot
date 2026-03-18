@@ -4,7 +4,6 @@
 
 import logging
 import os
-from decimal import Decimal
 from typing import Optional
 
 from aiogram import Router

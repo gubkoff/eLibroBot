@@ -9,8 +9,6 @@
 
 from decimal import Decimal
 
-import pytest
-
 from parser import parse_message
 
 
