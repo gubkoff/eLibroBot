@@ -11,6 +11,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
+from pydantic import ValidationError
 
 from config import get_settings
 from parser import parse_message
@@ -88,7 +89,14 @@ dp.include_router(report_router)
 
 
 async def main() -> None:
-    settings = get_settings()
+    try:
+        settings = get_settings()
+    except ValidationError as e:
+        logger.critical(
+            "Некорректные настройки. Проверьте .env / переменные окружения. Ошибка: %s",
+            e,
+        )
+        raise SystemExit(2) from e
     bot = Bot(
         token=settings.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
