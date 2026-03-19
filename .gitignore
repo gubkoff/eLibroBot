@@ -138,3 +138,4 @@ cython_debug/
 # Project-specific
 venv_int/
 debug_nakladnaya.pdf
+logs/
