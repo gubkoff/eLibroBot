@@ -26,7 +26,7 @@ async def pipeline_handler(message: Message) -> None:
     Пайплайн по сообщению из группы-источника:
     parse_message (WeighingData) → формирование накладной → build_pdf → отправка в группу-получатель.
     Регистрируется с фильтром source_group_message, поэтому сюда попадают только
-    текстовые сообщения из SOURCE_GROUP_ID (не команды).
+    текстовые сообщения из SOURCE_GROUP_ID(S) (не команды).
     """
     settings = get_settings()
     pdf_path = None

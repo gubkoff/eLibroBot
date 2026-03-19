@@ -20,7 +20,7 @@ class SourceGroupFilter(BaseFilter):
         if not message.text or not message.text.strip():
             return False
         settings = get_settings()
-        if message.chat.id != settings.SOURCE_GROUP_ID:
+        if message.chat.id not in settings.source_group_ids:
             return False
         if message.text.strip().startswith("/"):
             return False
