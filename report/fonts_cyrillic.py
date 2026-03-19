@@ -1,9 +1,12 @@
 """
 Register a font that supports Cyrillic for PDF output.
 Prefers Arial/Arial Bold on macOS; falls back to DejaVuSans (project or system).
+On Windows, uses fonts from %WINDIR%\\Fonts (Arial) when available — важно для PyInstaller onefile.
 """
 
 import logging
+import os
+import sys
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
@@ -16,9 +19,30 @@ logger = logging.getLogger(__name__)
 CYRILLIC_FONT_NAME = "DejaVuSans"
 CYRILLIC_FONT_BOLD_NAME = "DejaVuSans-Bold"
 
-# Candidate paths: project fonts/ then system
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_CANDIDATES: list[Tuple[Path, Union[Path, None]]] = [
+
+def _project_root() -> Path:
+    """Корень приложения: каталог с ``main.py`` / распакованный ``_MEIPASS`` у PyInstaller."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    # .../report/fonts_cyrillic.py -> родитель ``report`` = корень репозитория
+    return Path(__file__).resolve().parents[1]
+
+
+_PROJECT_ROOT = _project_root()
+
+_CANDIDATES: list[Tuple[Path, Union[Path, None]]] = []
+
+if sys.platform == "win32":
+    _windir = Path(os.environ.get("WINDIR", r"C:\Windows"))
+    _CANDIDATES.extend(
+        [
+            (_windir / "Fonts" / "arial.ttf", _windir / "Fonts" / "arialbd.ttf"),
+            (_windir / "Fonts" / "ARIAL.TTF", _windir / "Fonts" / "ARIALBD.TTF"),
+        ]
+    )
+
+_CANDIDATES.extend(
+    [
     # macOS Arial (preferred)
     (Path("/Library/Fonts/Arial.ttf"), Path("/Library/Fonts/Arial Bold.ttf")),
     (Path("/System/Library/Fonts/Supplemental/Arial.ttf"), Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf")),
@@ -29,7 +53,8 @@ _CANDIDATES: list[Tuple[Path, Union[Path, None]]] = [
     (Path("/usr/share/fonts/TTF/DejaVuSans.ttf"), Path("/usr/share/fonts/TTF/DejaVuSans-Bold.ttf")),
     # User fonts
     (Path.home() / "Library" / "Fonts" / "DejaVuSans.ttf", Path.home() / "Library" / "Fonts" / "DejaVuSans-Bold.ttf"),
-]
+    ]
+)
 
 _loaded = False
 
