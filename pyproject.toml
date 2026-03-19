@@ -1,0 +1,5 @@
+# Метаданные проекта; основная установка зависимостей — через requirements.txt
+[project]
+name = "eLibroBot"
+requires-python = ">=3.9"
+readme = "README.md"
