@@ -28,6 +28,11 @@ async def pipeline_handler(message: Message) -> None:
     Регистрируется с фильтром source_group_message, поэтому сюда попадают только
     текстовые сообщения из SOURCE_GROUP_ID(S) (не команды).
     """
+    logger.info(
+        "Получено сообщение из чата id=%s title=%r",
+        getattr(message.chat, "id", None),
+        getattr(message.chat, "title", None),
+    )
     settings = get_settings()
     pdf_path = None
     try:

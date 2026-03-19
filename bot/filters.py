@@ -21,6 +21,15 @@ class SourceGroupFilter(BaseFilter):
             return False
         settings = get_settings()
         if message.chat.id not in settings.source_group_ids:
+            # Помогает увидеть реальный id чата в логе, если .env настроен неверно.
+            if message.chat.type in ("group", "supergroup"):
+                logger.info(
+                    "Сообщение не из списка источников: chat id=%s title=%r "
+                    "(ожидаются id: %s)",
+                    message.chat.id,
+                    getattr(message.chat, "title", None),
+                    settings.source_group_ids,
+                )
             return False
         if message.text.strip().startswith("/"):
             return False

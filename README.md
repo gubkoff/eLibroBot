@@ -28,6 +28,8 @@ python main.py
 
 Сборка **одного `eLibroBot.exe`** для машины без Python — [`docs/WINDOWS_EXE_DEPLOY.md`](docs/WINDOWS_EXE_DEPLOY.md), скрипт [`scripts/windows/build_onefile.bat`](scripts/windows/build_onefile.bat).
 
+**Инструкция для пользователей** (exe, `.env`, автозапуск): [`docs/USER_GUIDE_EXE_WINDOWS.md`](docs/USER_GUIDE_EXE_WINDOWS.md).
+
 ## Тесты
 
 ```bash
