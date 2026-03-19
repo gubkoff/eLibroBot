@@ -139,3 +139,7 @@ cython_debug/
 venv_int/
 debug_nakladnaya.pdf
 logs/
+
+# Telethon (MTProto) — секрет, не коммитить
+telethon.session
+telethon.session-journal

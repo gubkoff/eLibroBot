@@ -1,7 +1,7 @@
 """Настройки приложения из переменных окружения и .env."""
 
 from functools import lru_cache
-
+from pathlib import Path
 from typing import Optional
 
 from pydantic import field_validator, model_validator
@@ -22,6 +22,20 @@ class Settings(BaseSettings):
     # Optional: comma-separated list of chat ids, e.g. "-1001,-1002".
     SOURCE_GROUP_IDS: Optional[str] = None
     TARGET_GROUP_ID: int
+
+    # MTProto (Telethon): чтение из групп-источников под пользователем — видны сообщения от других ботов.
+    # Если оба заданы, пайплайн из Bot API для источников отключается, чтение только через Telethon.
+    TELEGRAM_API_ID: Optional[int] = None
+    TELEGRAM_API_HASH: Optional[str] = None
+    # Файл сессии SQLite рядом с рабочей директорией (по умолчанию telethon.session).
+    TELEGRAM_SESSION_FILE: str = "telethon.session"
+    # Альтернатива файлу: строка сессии Telethon (StringSession.save()).
+    TELEGRAM_SESSION_STRING: Optional[str] = None
+    # Первый вход / новая сессия: номер в международном формате, например +79001234567
+    TELEGRAM_PHONE: Optional[str] = None
+    TELEGRAM_2FA_PASSWORD: Optional[str] = None
+    # Первый вход без кода по телефону: True — вход по QR (Telegram → Устройства → Подключить устройство).
+    TELEGRAM_LOGIN_QR: bool = False
 
     @field_validator("BOT_TOKEN")
     @classmethod
@@ -58,6 +72,24 @@ class Settings(BaseSettings):
             return None
         v = v.strip()
         return v or None
+
+    @field_validator("TELEGRAM_API_HASH")
+    @classmethod
+    def _strip_api_hash(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+    @model_validator(mode="after")
+    def _validate_mtproto_pair(self) -> "Settings":
+        has_id = self.TELEGRAM_API_ID is not None
+        has_hash = bool(self.TELEGRAM_API_HASH)
+        if has_id != has_hash:
+            raise ValueError(
+                "Задайте оба TELEGRAM_API_ID и TELEGRAM_API_HASH или отключите MTProto (оба пустые)."
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_groups_not_equal(self) -> "Settings":
@@ -96,6 +128,18 @@ class Settings(BaseSettings):
         seen: set[int] = set()
         uniq = [x for x in out if not (x in seen or seen.add(x))]
         return tuple(uniq)
+
+    @property
+    def mtproto_source_enabled(self) -> bool:
+        return self.TELEGRAM_API_ID is not None and bool(self.TELEGRAM_API_HASH)
+
+    @property
+    def telethon_session_path(self) -> str:
+        """Абсолютный путь к файлу сессии Telethon (если не используется TELEGRAM_SESSION_STRING)."""
+        p = Path(self.TELEGRAM_SESSION_FILE or "telethon.session")
+        if not p.is_absolute():
+            p = Path.cwd() / p
+        return str(p)
 
 
 @lru_cache(maxsize=1)

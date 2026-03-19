@@ -16,6 +16,8 @@ pip install -r requirements.txt
 
 Скопируйте `.env.example` в `.env` и заполните переменные (см. `config.py`).
 
+**Сообщения от других ботов в группе-источнике:** через Bot API их не видно. Чтобы читать их и строить PDF, включите режим **MTProto** (`TELEGRAM_API_ID` + `TELEGRAM_API_HASH`) — см. [`docs/MTPROTO.md`](docs/MTPROTO.md).
+
 ## Запуск бота
 
 ```bash

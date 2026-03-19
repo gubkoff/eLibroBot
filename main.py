@@ -84,10 +84,6 @@ async def cmd_parse(message: Message) -> None:
     await message.answer(reply)
 
 
-# Пайплайн: сообщения из группы-источника → PDF в группу-получатель
-dp.include_router(report_router)
-
-
 async def main() -> None:
     try:
         settings = get_settings()
@@ -97,12 +93,30 @@ async def main() -> None:
             e,
         )
         raise SystemExit(2) from e
+    if not settings.mtproto_source_enabled:
+        dp.include_router(report_router)
+        logger.info("Чтение из групп-источников: Bot API (как раньше).")
+    else:
+        logger.info(
+            "Чтение из групп-источников: MTProto (Telethon); "
+            "сообщения от других ботов видны. PDF в целевую группу шлёт бот."
+        )
+
     bot = Bot(
         token=settings.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    logger.info("Запуск eLibroCargoReportBot...")
-    await dp.start_polling(bot)
+    logger.info("Запуск eLibroCargoReportBot (long polling)...")
+
+    if settings.mtproto_source_enabled:
+        from bot.mtproto_reader import run_mtproto_client
+
+        await asyncio.gather(
+            dp.start_polling(bot),
+            run_mtproto_client(bot),
+        )
+    else:
+        await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
