@@ -22,6 +22,12 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### Windows: автозапуск после перезагрузки
+
+Скрипт [`scripts/windows/run_bot.bat`](scripts/windows/run_bot.bat) и пошаговая настройка **Планировщика заданий** — в [`docs/WINDOWS_AUTOSTART.md`](docs/WINDOWS_AUTOSTART.md).
+
+Сборка **одного `eLibroBot.exe`** для машины без Python — [`docs/WINDOWS_EXE_DEPLOY.md`](docs/WINDOWS_EXE_DEPLOY.md), скрипт [`scripts/windows/build_onefile.bat`](scripts/windows/build_onefile.bat).
+
 ## Тесты
 
 ```bash
