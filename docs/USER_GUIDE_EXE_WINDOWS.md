@@ -143,3 +143,5 @@ SOURCE_GROUP_IDS=-5101635675,-5248119832
 Автозапуск через **bat** и Python (если Python установлен): **[WINDOWS_AUTOSTART.md](WINDOWS_AUTOSTART.md)**.
 
 Режим **MTProto** (чтение групп под пользователем, в т.ч. сообщения от других ботов), вход по **QR** и файл **`telethon.session`** рядом с exe — **[MTPROTO.md](MTPROTO.md)** и соответствующий раздел в **[WINDOWS_EXE_DEPLOY.md](WINDOWS_EXE_DEPLOY.md)**.
+
+После первого входа, если нужен запуск **без чёрного окна**, используйте **`eLibroBotLaunch.exe`** (лаунчер) вместо прямого запуска `eLibroBot.exe` — подробности в **WINDOWS_EXE_DEPLOY.md**.

@@ -28,7 +28,7 @@ python main.py
 
 Скрипт [`scripts/windows/run_bot.bat`](scripts/windows/run_bot.bat) и пошаговая настройка **Планировщика заданий** — в [`docs/WINDOWS_AUTOSTART.md`](docs/WINDOWS_AUTOSTART.md).
 
-Сборка **одного `eLibroBot.exe`** для машины без Python — [`docs/WINDOWS_EXE_DEPLOY.md`](docs/WINDOWS_EXE_DEPLOY.md), скрипт [`scripts/windows/build_onefile.bat`](scripts/windows/build_onefile.bat).
+Сборка **`eLibroBot.exe`** и лаунчера **`eLibroBotLaunch.exe`** (тихий старт после MTProto-сессии) — [`docs/WINDOWS_EXE_DEPLOY.md`](docs/WINDOWS_EXE_DEPLOY.md), скрипт [`scripts/windows/build_onefile.bat`](scripts/windows/build_onefile.bat).
 
 **Инструкция для пользователей** (exe, `.env`, автозапуск): [`docs/USER_GUIDE_EXE_WINDOWS.md`](docs/USER_GUIDE_EXE_WINDOWS.md).
 

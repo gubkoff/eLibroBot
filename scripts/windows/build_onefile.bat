@@ -13,7 +13,11 @@ if errorlevel 1 exit /b 1
 python -m PyInstaller --noconfirm --clean scripts\windows\eLibroBot.spec
 if errorlevel 1 exit /b 1
 
+python -m PyInstaller --noconfirm --clean scripts\windows\eLibroBot_launcher.spec
+if errorlevel 1 exit /b 1
+
 echo.
-echo Готово: dist\eLibroBot.exe
-echo Скопируйте exe и файл .env в одну папку на целевой машине (см. docs\WINDOWS_EXE_DEPLOY.md).
+echo Готово: dist\eLibroBot.exe и dist\eLibroBotLaunch.exe
+echo Для фона без окна (после первого входа MTProto): ярлык на eLibroBotLaunch.exe
+echo См. docs\WINDOWS_EXE_DEPLOY.md
 exit /b 0
