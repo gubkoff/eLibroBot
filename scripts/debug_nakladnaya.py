@@ -33,7 +33,6 @@ def main() -> None:
         invoice_number="3722",
         price_per_ton=Decimal("16000"),
         amount=Decimal("99999999"),
-        amount_raw=Decimal("99999999"),
         weighing_datetime=datetime(2026, 3, 14, 9, 32, 4),
         user="Руфина",
         message_sent_at=datetime(2026, 3, 14, 9, 32, 4),
