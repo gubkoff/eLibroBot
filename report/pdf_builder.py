@@ -1,8 +1,9 @@
 import logging
+import os
 import tempfile
+from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
-import os
 from pathlib import Path
 from typing import Any, List, Optional
 from xml.sax.saxutils import escape
@@ -31,121 +32,15 @@ from reportlab.platypus.tables import TableStyle
 
 from parser.models import WeighingData
 from report.calculator import CalculationResult
+from report.invoice_models import InvoiceData
 from report.fonts_cyrillic import (
     CYRILLIC_FONT_BOLD_NAME,
     CYRILLIC_FONT_NAME,
     register_cyrillic_font,
 )
+from report.money_ru import amount_to_words_kzt, format_money_ru_kzt
 
 logger = logging.getLogger(__name__)
-
-
-def _format_money(value: Decimal) -> str:
-    """Сумма/цена: 2 знака после запятой (тиыны), запятая как разделитель, пробел в целой части."""
-    s = f"{value:.2f}"
-    int_part, _, frac_part = s.partition(".")
-    int_part = int_part or "0"
-    chunks = [
-        int_part[max(0, i - 3) : i]
-        for i in range(len(int_part), 0, -3)
-    ]
-    grouped = " ".join(reversed(chunks))
-    return f"{grouped},{frac_part}"
-
-
-# Слова для прописного написания суммы (рус.)
-_ONES = [
-    "", "один", "два", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять",
-    "десять", "одиннадцать", "двенадцать", "тринадцать", "четырнадцать", "пятнадцать",
-    "шестнадцать", "семнадцать", "восемнадцать", "девятнадцать",
-]
-_TENS = ["", "", "двадцать", "тридцать", "сорок", "пятьдесят", "шестьдесят", "семьдесят", "восемьдесят", "девяносто"]
-_HUNDREDS = ["", "сто", "двести", "триста", "четыреста", "пятьсот", "шестьсот", "семьсот", "восемьсот", "девятьсот"]
-
-
-def _triad_to_words_ru(n: int, *, gender: str = "m") -> list[str]:
-    """0..999 -> слова. gender: 'm' (один/два) или 'f' (одна/две)."""
-    if n <= 0:
-        return []
-    if n > 999:
-        raise ValueError("triad out of range")
-    out: list[str] = []
-    if n >= 100:
-        out.append(_HUNDREDS[n // 100])
-        n %= 100
-    if 20 <= n <= 99:
-        out.append(_TENS[n // 10])
-        n %= 10
-    if 10 <= n <= 19:
-        out.append(_ONES[n])
-        return [w for w in out if w]
-    if n == 0:
-        return [w for w in out if w]
-    if gender == "f":
-        if n == 1:
-            out.append("одна")
-        elif n == 2:
-            out.append("две")
-        else:
-            out.append(_ONES[n])
-    else:
-        out.append(_ONES[n])
-    return [w for w in out if w]
-
-
-def _choose_plural(n: int, one: str, few: str, many: str) -> str:
-    """Выбор формы по числу: 1/2-4/прочее с учётом 11-14."""
-    n = abs(n)
-    if 11 <= (n % 100) <= 14:
-        return many
-    last = n % 10
-    if last == 1:
-        return one
-    if last in (2, 3, 4):
-        return few
-    return many
-
-
-def _int_to_words_ru(n: int) -> str:
-    """Целое число в пропись по-русски (до 99 999 999)."""
-    if n == 0:
-        return "ноль"
-    if n < 0 or n > 99_999_999:
-        return str(n)
-    out: list[str] = []
-
-    millions = n // 1_000_000
-    thousands = (n // 1000) % 1000
-    rest = n % 1000
-
-    if millions:
-        out.extend(_triad_to_words_ru(millions, gender="m"))
-        out.append(_choose_plural(millions, "миллион", "миллиона", "миллионов"))
-
-    if thousands:
-        if thousands == 1:
-            # По требованию: 1002 -> «тысяча две» (без «одна»)
-            out.append("тысяча")
-        else:
-            out.extend(_triad_to_words_ru(thousands, gender="f"))
-            out.append(_choose_plural(thousands, "тысяча", "тысячи", "тысяч"))
-
-    if rest:
-        if thousands == 1 and rest == 2:
-            out.append("две")
-        else:
-            out.extend(_triad_to_words_ru(rest, gender="m"))
-
-    return " ".join(out)
-
-
-def _amount_to_words(value: Decimal) -> str:
-    """Сумма в пропись: «X тенге YY тиын» (тиыны — два знака)."""
-    value = value.quantize(Decimal("0.01"))
-    int_part = int(value)
-    tyiyn = int(round((value - int_part) * 100))
-    words = _int_to_words_ru(int_part)
-    return f"{words} тенге {tyiyn:02d} тиын"
 
 
 def _format_cargo_for_cell(text: str) -> str:
@@ -175,6 +70,9 @@ def build_pdf(
     spreadsheet_id: Optional[str] = None,
     credentials_path: Optional[str] = None,
     weighing: Optional[WeighingData] = None,
+    *,
+    nds_override: Optional[Decimal] = None,
+    duplicate_on_one_page: bool = True,
     **meta: str,
 ) -> Path:
     """
@@ -325,10 +223,13 @@ def build_pdf(
 
     # Итог по накладной — таблица: первый столбец «Итого», второй — число (оформлено как деньги)
     total = calculation_result.total
-    nds_amount = (total / Decimal("116") * Decimal("16")).quantize(Decimal("0.01"))
+    if nds_override is not None:
+        nds_amount = nds_override
+    else:
+        nds_amount = (total / Decimal("116") * Decimal("16")).quantize(Decimal("0.01"))
     total_data = [
-        ["Итого:", _format_money(total)],
-        ["В том числе НДС:", _format_money(nds_amount)],
+        ["Итого:", format_money_ru_kzt(total)],
+        ["В том числе НДС:", format_money_ru_kzt(nds_amount)],
     ]
     total_table_label_width = 155 * mm;
     total_table = Table(
@@ -355,9 +256,9 @@ def build_pdf(
 
     # Всего наименований и сумма прописью — таблица под итогом
     items_count = 1 if weighing is not None else len(records) or 0
-    total_formatted = _format_money(total)
+    total_formatted = format_money_ru_kzt(total)
     row1_text = f"<u>Всего наименований {items_count}, на сумму {total_formatted} KZT</u>"
-    row2_text = _amount_to_words(total).capitalize()
+    row2_text = amount_to_words_kzt(total).capitalize()
     summary_style = ParagraphStyle(
         "SummaryRow",
         parent=styles["Normal"],
@@ -410,6 +311,24 @@ def build_pdf(
         )
     )
     block_story.append(signs_table)
+
+    if not duplicate_on_one_page:
+        tmp_one = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        path_one = Path(tmp_one.name)
+        tmp_one.close()
+        doc_one = BaseDocTemplate(
+            str(path_one),
+            pagesize=A4,
+            leftMargin=left_margin,
+            rightMargin=right_margin,
+            topMargin=top_margin,
+            bottomMargin=bottom_margin,
+            pageTemplates=[
+                PageTemplate(id="single", frames=[single_frame]),
+            ],
+        )
+        doc_one.build(list(block_story))
+        return path_one
 
     # Сначала пытаемся сверстать 2 копии на одном листе (верх/низ).
     # Если ReportLab не может уложить контент (LayoutError) — печатаем вторую копию на следующей странице сверху.
@@ -542,8 +461,8 @@ def _build_items_table(
             kg_to_t(weighing.tara_kg),
             kg_to_t(netto_kg),
             kg_to_t(brutto_kg),
-            _format_money(weighing.price_per_ton),
-            _format_money(weighing.amount),
+            format_money_ru_kzt(weighing.price_per_ton),
+            format_money_ru_kzt(weighing.amount),
         ]
     )
     # Ширины колонок вычисляем пропорционально, чтобы сумма была ровно doc_width
@@ -574,3 +493,60 @@ def _build_items_table(
         )
     )
     return table
+
+
+def _invoice_to_weighing_for_table(inv: InvoiceData) -> WeighingData:
+    """Минимальный ``WeighingData`` для существующей таблицы позиций (итоговые веса из invoice)."""
+    return WeighingData(
+        weighing_number=inv.weighing_number,
+        plate_number=inv.plate_number,
+        tara_kg=inv.tara_kg,
+        brutto_kg=inv.brutto_kg_final,
+        netto_kg=inv.netto_kg_final,
+        cargo=inv.cargo,
+        counterparty="",
+        invoice_number=inv.invoice_number,
+        price_per_ton=inv.price_per_ton_raw,
+        amount=inv.amount_final,
+        weighing_datetime=inv.weighing_datetime,
+        user=inv.user or "",
+        message_sent_at=inv.message_sent_at,
+        adjusted_netto_kg=0,
+    )
+
+
+def build_pdf_invoice(
+    invoice: InvoiceData,
+    *,
+    title: str = "Расходная накладная",
+    duplicate_on_one_page: bool = True,
+    **meta: str,
+) -> Path:
+    """
+    PDF-накладная по ``InvoiceData`` (после ``weighing_to_invoice``).
+
+    ``duplicate_on_one_page=False`` — одна копия на одной странице.
+    """
+    w = _invoice_to_weighing_for_table(invoice)
+    merged: dict[str, str] = {str(k): str(v) for k, v in meta.items()}
+    sup = (invoice.supplier_name or "").strip()
+    if sup:
+        merged["supplier"] = sup
+    buyer_line = (invoice.buyer_line or "").strip()
+    if buyer_line:
+        merged["buyer"] = buyer_line
+    else:
+        w = replace(w, counterparty=invoice.counterparty)
+
+    return build_pdf(
+        CalculationResult(
+            total=invoice.amount_final,
+            by_category={invoice.cargo: invoice.amount_final},
+        ),
+        records=[],
+        title=title,
+        weighing=w,
+        nds_override=invoice.nds_amount,
+        duplicate_on_one_page=duplicate_on_one_page,
+        **merged,
+    )
