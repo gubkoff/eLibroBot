@@ -38,6 +38,53 @@ from report.fonts_cyrillic import (
     CYRILLIC_FONT_NAME,
     register_cyrillic_font,
 )
+from report.pdf_layout_constants import (
+    CUT_LINE_COLOR_HEX,
+    CUT_LINE_DASH_OFF,
+    CUT_LINE_DASH_ON,
+    CUT_LINE_OFFSET_MM,
+    CUT_LINE_WIDTH,
+    FRAME_PADDING,
+    HEADER_FONT_SIZE,
+    HEADER_ROW_HEIGHT,
+    HEADER_UNDERLINE_WIDTH,
+    ITEMS_BOX_WIDTH,
+    ITEMS_CARGO_FONT_SIZE,
+    ITEMS_CARGO_LEADING,
+    ITEMS_COL_BASE_WIDTHS,
+    ITEMS_GRID_WIDTH,
+    ITEMS_HEADER_BOTTOM_PADDING,
+    ITEMS_HEADER_TOP_PADDING,
+    ITEMS_ROW_BOTTOM_PADDING,
+    ITEMS_ROW_TOP_PADDING,
+    ITEMS_SPACER_AFTER_MM,
+    PAGE_MARGIN_BOTTOM_MM,
+    PAGE_MARGIN_LEFT_MM,
+    PAGE_MARGIN_RIGHT_MM,
+    PAGE_MARGIN_TOP_MM,
+    PARTIES_FONT_SIZE,
+    PARTIES_LABEL_COL_MM,
+    PARTIES_ROW_BOTTOM_PADDING,
+    PARTIES_ROW_TOP_PADDING,
+    PARTIES_SPACER_AFTER_MM,
+    PARTIES_SPACER_BEFORE,
+    SIGNS_FONT_SIZE,
+    SIGNS_ROW_BOTTOM_PADDING,
+    SIGNS_ROW_TOP_PADDING,
+    SIGNS_SPACER_BEFORE_MM,
+    SUMMARY_AMOUNT_LEADING,
+    SUMMARY_BASE_FONT_SIZE,
+    SUMMARY_ROW_BOTTOM_PADDING,
+    SUMMARY_ROW_TOP_PADDING,
+    SUMMARY_SPACER_AFTER_MM,
+    SUMMARY_TABLE_FONT_SIZE,
+    TABLE_HEADER_BG_HEX,
+    TOTAL_FONT_SIZE,
+    TOTAL_ROW_BOTTOM_PADDING,
+    TOTAL_ROW_TOP_PADDING,
+    TOTAL_SPACER_AFTER_MM,
+    TOTAL_TABLE_LABEL_COL_MM,
+)
 from report.money_ru import amount_to_words_kzt, format_money_ru_kzt
 
 logger = logging.getLogger(__name__)
@@ -68,10 +115,10 @@ def build_pdf(
     font_bold = CYRILLIC_FONT_BOLD_NAME if has_cyrillic_font else "Helvetica-Bold"
 
     # Поля A4 (мм): 15 мм со всех сторон
-    left_margin = 15 * mm
-    right_margin = 15 * mm
-    top_margin = 15 * mm
-    bottom_margin = 25 * mm
+    left_margin = PAGE_MARGIN_LEFT_MM * mm
+    right_margin = PAGE_MARGIN_RIGHT_MM * mm
+    top_margin = PAGE_MARGIN_TOP_MM * mm
+    bottom_margin = PAGE_MARGIN_BOTTOM_MM * mm
 
     page_width, page_height = A4
     content_width = page_width - left_margin - right_margin
@@ -84,10 +131,10 @@ def build_pdf(
         bottom_margin,
         content_width,
         frame_h,
-        leftPadding=0,
-        rightPadding=0,
-        topPadding=0,
-        bottomPadding=0,
+        leftPadding=FRAME_PADDING,
+        rightPadding=FRAME_PADDING,
+        topPadding=FRAME_PADDING,
+        bottomPadding=FRAME_PADDING,
         id="bottom",
     )
     top_frame = Frame(
@@ -95,10 +142,10 @@ def build_pdf(
         bottom_margin + frame_h,
         content_width,
         frame_h,
-        leftPadding=0,
-        rightPadding=0,
-        topPadding=0,
-        bottomPadding=0,
+        leftPadding=FRAME_PADDING,
+        rightPadding=FRAME_PADDING,
+        topPadding=FRAME_PADDING,
+        bottomPadding=FRAME_PADDING,
         id="top",
     )
 
@@ -108,10 +155,10 @@ def build_pdf(
         bottom_margin,
         content_width,
         content_height,
-        leftPadding=0,
-        rightPadding=0,
-        topPadding=0,
-        bottomPadding=0,
+        leftPadding=FRAME_PADDING,
+        rightPadding=FRAME_PADDING,
+        topPadding=FRAME_PADDING,
+        bottomPadding=FRAME_PADDING,
         id="single",
     )
 
@@ -139,16 +186,16 @@ def build_pdf(
         doc_date = meta.get("doc_date") or datetime.now().strftime("%d.%m.%Y")
     header_text = f"{title} № {doc_number} от {doc_date} г." if doc_number else f"{title} от {doc_date} г."
     # Заголовок в виде таблицы с одним столбцом
-    header_table = Table([[header_text]], colWidths=[content_width], rowHeights=[20])
+    header_table = Table([[header_text]], colWidths=[content_width], rowHeights=[HEADER_ROW_HEIGHT])
     header_table.hAlign = "LEFT"
     header_table.setStyle(
         TableStyle(
             [
                 ("FONTNAME", (0, 0), (-1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), 16),
+                ("FONTSIZE", (0, 0), (-1, -1), HEADER_FONT_SIZE),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LINEBELOW", (0, 0), (-1, -1), 2.0, colors.black),
+                ("LINEBELOW", (0, 0), (-1, -1), HEADER_UNDERLINE_WIDTH, colors.black),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ("TOPPADDING", (0, 0), (-1, -1), 0),
@@ -172,7 +219,7 @@ def build_pdf(
         if weighing.plate_number:
             buyer_parts.append(f"номер авто {weighing.plate_number}")
         buyer = ", ".join(buyer_parts) or buyer
-    col_label = 23 * mm
+    col_label = PARTIES_LABEL_COL_MM * mm
     col_value = content_width - col_label
     parties_data: list[list[str]] = [["Поставщик", supplier]]
     if buyer:
@@ -183,23 +230,23 @@ def build_pdf(
             [
                 ("FONTNAME", (0, 0), (0, -1), font_name),
                 ("FONTNAME", (1, 0), (1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("FONTSIZE", (0, 0), (-1, -1), PARTIES_FONT_SIZE),
                 ("ALIGN", (0, 0), (0, -1), "LEFT"),
                 ("ALIGN", (1, 0), (1, -1), "LEFT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), PARTIES_ROW_TOP_PADDING),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), PARTIES_ROW_BOTTOM_PADDING),
             ]
         )
     )
-    block_story.append(Spacer(1, 10))
+    block_story.append(Spacer(1, PARTIES_SPACER_BEFORE))
     block_story.append(parties_table)
-    block_story.append(Spacer(1, 4 * mm))
+    block_story.append(Spacer(1, PARTIES_SPACER_AFTER_MM * mm))
 
     # Таблица позиций
     if weighing is not None:
         block_story.append(_build_items_table(weighing, font_name, font_bold, content_width))
-        block_story.append(Spacer(1, 4 * mm))
+        block_story.append(Spacer(1, ITEMS_SPACER_AFTER_MM * mm))
 
     # Итог по накладной — таблица: первый столбец «Итого», второй — число (оформлено как деньги)
     total = calculation_result.total
@@ -211,7 +258,7 @@ def build_pdf(
         ["Итого:", format_money_ru_kzt(total)],
         ["В том числе НДС:", format_money_ru_kzt(nds_amount)],
     ]
-    total_table_label_width = 155 * mm;
+    total_table_label_width = TOTAL_TABLE_LABEL_COL_MM * mm
     total_table = Table(
         total_data,
         colWidths=[total_table_label_width, content_width - total_table_label_width],
@@ -222,17 +269,17 @@ def build_pdf(
             [
                 ("FONTNAME", (0, 0), (0, -1), font_bold),
                 ("FONTNAME", (1, 0), (1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("FONTSIZE", (0, 0), (-1, -1), TOTAL_FONT_SIZE),
                 ("ALIGN", (0, 0), (0, -1), "RIGHT"),
                 ("ALIGN", (1, 0), (1, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), TOTAL_ROW_TOP_PADDING),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), TOTAL_ROW_BOTTOM_PADDING),
             ]
         )
     )
     block_story.append(total_table)
-    block_story.append(Spacer(1, 5 * mm))
+    block_story.append(Spacer(1, TOTAL_SPACER_AFTER_MM * mm))
 
     # Всего наименований и сумма прописью — таблица под итогом
     items_count = 1 if weighing is not None else len(records) or 0
@@ -243,14 +290,14 @@ def build_pdf(
         "SummaryRow",
         parent=styles["Normal"],
         fontName=font_name,
-        fontSize=10,
+        fontSize=SUMMARY_BASE_FONT_SIZE,
     )
     amount_words_style = ParagraphStyle(
         "AmountWordsRow",
         parent=styles["Normal"],
         fontName=font_bold,
-        fontSize=10,
-        leading=12,
+        fontSize=SUMMARY_BASE_FONT_SIZE,
+        leading=SUMMARY_AMOUNT_LEADING,
     )
     # Paragraph автоматически перенесёт “сумму прописью” на новую строку при нехватке ширины.
     summary_data = [
@@ -262,31 +309,31 @@ def build_pdf(
         TableStyle(
             [
                 ("FONTNAME", (0, 0), (-1, -1), font_name),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("FONTSIZE", (0, 0), (-1, -1), SUMMARY_TABLE_FONT_SIZE),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), SUMMARY_ROW_TOP_PADDING),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), SUMMARY_ROW_BOTTOM_PADDING),
             ]
         )
     )
     block_story.append(summary_table)
-    block_story.append(Spacer(1, 10 * mm))
+    block_story.append(Spacer(1, SUMMARY_SPACER_AFTER_MM * mm))
 
     # Подписи: таблица — отпустил (левый столбец), получил (правый)
-    block_story.append(Spacer(1, 6 * mm))
+    block_story.append(Spacer(1, SIGNS_SPACER_BEFORE_MM * mm))
     signs_data = [["Отпустил ________________________", "Получил ________________________"]]
     signs_table = Table(signs_data, colWidths=[content_width / 2, content_width / 2])
     signs_table.setStyle(
         TableStyle(
             [
                 ("FONTNAME", (0, 0), (-1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("FONTSIZE", (0, 0), (-1, -1), SIGNS_FONT_SIZE),
                 ("ALIGN", (0, 0), (0, -1), "LEFT"),
                 ("ALIGN", (1, 0), (1, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), SIGNS_ROW_TOP_PADDING),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), SIGNS_ROW_BOTTOM_PADDING),
             ]
         )
     )
@@ -316,11 +363,11 @@ def build_pdf(
         """Пунктирная линия разреза строго посередине страницы (только для режима double)."""
         canvas.saveState()
         try:
-            canvas.setStrokeColor(colors.HexColor("#999999"))
-            canvas.setLineWidth(0.6)
-            canvas.setDash(3, 3)
+            canvas.setStrokeColor(colors.HexColor(CUT_LINE_COLOR_HEX))
+            canvas.setLineWidth(CUT_LINE_WIDTH)
+            canvas.setDash(CUT_LINE_DASH_ON, CUT_LINE_DASH_OFF)
             # На 5 мм ниже границы между верхним и нижним фреймами
-            y = bottom_margin + frame_h - 5 * mm
+            y = bottom_margin + frame_h - CUT_LINE_OFFSET_MM * mm
             canvas.line(left_margin, y, page_width - right_margin, y)
         finally:
             canvas.restoreState()
@@ -411,8 +458,8 @@ def _build_items_table(
     cargo_style = ParagraphStyle(
         "CargoCell",
         fontName=font_name,
-        fontSize=10,
-        leading=11,
+        fontSize=ITEMS_CARGO_FONT_SIZE,
+        leading=ITEMS_CARGO_LEADING,
     )
 
     def _format_ton(value: Decimal) -> str:
@@ -446,7 +493,7 @@ def _build_items_table(
         ]
     )
     # Ширины колонок вычисляем пропорционально, чтобы сумма была ровно doc_width
-    base = [55, 20, 16, 16, 16, 26, 26]
+    base = ITEMS_COL_BASE_WIDTHS
     total = sum(base)
     col_widths = [(w / total) * doc_width for w in base]
     table = Table(data, colWidths=col_widths)
@@ -454,7 +501,7 @@ def _build_items_table(
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#ffffff")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(TABLE_HEADER_BG_HEX)),
                 ("ALIGN", (0, 0), (-1, 0), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("ALIGN", (1, 0), (1, -1), "CENTER"),
@@ -463,12 +510,12 @@ def _build_items_table(
                 ("FONTNAME", (0, 0), (-1, -1), font_name),
                 ("FONTNAME", (0, 0), (-1, 0), font_bold),
                 ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, 0), 11),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 11),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.gray),
-                ("BOX", (0, 0), (-1, -1), 1.5, colors.black),
+                ("TOPPADDING", (0, 0), (-1, -1), ITEMS_ROW_TOP_PADDING),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), ITEMS_ROW_BOTTOM_PADDING),
+                ("TOPPADDING", (0, 0), (-1, 0), ITEMS_HEADER_TOP_PADDING),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), ITEMS_HEADER_BOTTOM_PADDING),
+                ("GRID", (0, 0), (-1, -1), ITEMS_GRID_WIDTH, colors.gray),
+                ("BOX", (0, 0), (-1, -1), ITEMS_BOX_WIDTH, colors.black),
             ]
         )
     )
