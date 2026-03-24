@@ -38,6 +38,12 @@ python main.py
 pytest -q
 ```
 
+Smoke-тесты PDF-верстки (только быстрые layout-checks):
+
+```bash
+pytest -q tests/test_pdf_builder_smoke.py
+```
+
 ## Локальная генерация PDF (без Telegram)
 
 ```bash
