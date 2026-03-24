@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, List, Optional
-from xml.sax.saxutils import escape
+from report.text_formatting import format_cargo_for_cell
 
 
 from reportlab.lib import colors
@@ -41,26 +41,6 @@ from report.fonts_cyrillic import (
 from report.money_ru import amount_to_words_kzt, format_money_ru_kzt
 
 logger = logging.getLogger(__name__)
-
-
-def _format_cargo_for_cell(text: str) -> str:
-    """
-    Форматирует название товара для ячейки таблицы:
-    если слово начинается с заглавной буквы и оно не первое — вставляем перенос строки.
-    Возвращает строку с HTML-переносами <br/>, безопасную для Paragraph.
-    """
-    text = (text or "").strip()
-    if not text:
-        return ""
-    parts = text.split()
-    out: list[str] = []
-    for i, w in enumerate(parts):
-        w_escaped = escape(w)
-        if i > 0 and w and w[0].isupper():
-            out.append("<br/>" + w_escaped)
-        else:
-            out.append(w_escaped)
-    return " ".join(out)
 
 
 def build_pdf(
@@ -456,7 +436,7 @@ def _build_items_table(
 
     data.append(
         [
-            Paragraph(_format_cargo_for_cell(weighing.cargo), cargo_style),
+            Paragraph(format_cargo_for_cell(weighing.cargo), cargo_style),
             "тонна",
             kg_to_t(weighing.tara_kg),
             kg_to_t(netto_kg),
