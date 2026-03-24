@@ -90,6 +90,197 @@ from report.money_ru import amount_to_words_kzt, format_money_ru_kzt
 logger = logging.getLogger(__name__)
 
 
+def _resolve_doc_header(
+    *,
+    title: str,
+    weighing: Optional[WeighingData],
+    meta: dict[str, str],
+) -> str:
+    """Возвращает строку заголовка накладной: № и дата."""
+    doc_number = ""
+    doc_date = ""
+    if weighing is not None:
+        doc_number = weighing.invoice_number or weighing.weighing_number
+        if weighing.weighing_datetime:
+            doc_date = weighing.weighing_datetime.strftime("%d.%m.%Y")
+        elif weighing.message_sent_at:
+            doc_date = weighing.message_sent_at.strftime("%d.%m.%Y")
+    if not doc_number:
+        doc_number = meta.get("doc_number", "")
+    if not doc_date:
+        doc_date = meta.get("doc_date") or datetime.now().strftime("%d.%m.%Y")
+    return f"{title} № {doc_number} от {doc_date} г." if doc_number else f"{title} от {doc_date} г."
+
+
+def _build_header_table(header_text: str, *, content_width: float, font_bold: str) -> Table:
+    """Таблица-заголовок с нижней линией."""
+    header_table = Table([[header_text]], colWidths=[content_width], rowHeights=[HEADER_ROW_HEIGHT])
+    header_table.hAlign = "LEFT"
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), font_bold),
+                ("FONTSIZE", (0, 0), (-1, -1), HEADER_FONT_SIZE),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LINEBELOW", (0, 0), (-1, -1), HEADER_UNDERLINE_WIDTH, colors.black),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    return header_table
+
+
+def _build_parties_story(
+    *,
+    weighing: Optional[WeighingData],
+    meta: dict[str, str],
+    content_width: float,
+    font_name: str,
+    font_bold: str,
+) -> list[Any]:
+    """Блок поставщик/покупатель со стандартными отступами."""
+    supplier = (
+        meta.get("supplier")
+        or meta.get("supplier_name")
+        or 'Товарищество с ограниченной ответственностью "КазТим Комир"'
+    )
+    buyer = meta.get("buyer") or meta.get("buyer_name") or ""
+    if weighing is not None:
+        buyer_parts: list[str] = []
+        if weighing.counterparty:
+            buyer_parts.append(weighing.counterparty)
+        if weighing.plate_number:
+            buyer_parts.append(f"номер авто {weighing.plate_number}")
+        buyer = ", ".join(buyer_parts) or buyer
+
+    col_label = PARTIES_LABEL_COL_MM * mm
+    col_value = content_width - col_label
+    parties_data: list[list[str]] = [["Поставщик", supplier]]
+    if buyer:
+        parties_data.append(["Покупатель", buyer])
+
+    parties_table = Table(parties_data, colWidths=[col_label, col_value])
+    parties_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (0, -1), font_name),
+                ("FONTNAME", (1, 0), (1, -1), font_bold),
+                ("FONTSIZE", (0, 0), (-1, -1), PARTIES_FONT_SIZE),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (1, 0), (1, -1), "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), PARTIES_ROW_TOP_PADDING),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), PARTIES_ROW_BOTTOM_PADDING),
+            ]
+        )
+    )
+    return [
+        Spacer(1, PARTIES_SPACER_BEFORE),
+        parties_table,
+        Spacer(1, PARTIES_SPACER_AFTER_MM * mm),
+    ]
+
+
+def _build_totals_story(
+    *,
+    total: Decimal,
+    nds_amount: Decimal,
+    items_count: int,
+    content_width: float,
+    styles: Any,
+    font_name: str,
+    font_bold: str,
+) -> list[Any]:
+    """Итоги, сумма прописью и подписи."""
+    total_data = [
+        ["Итого:", format_money_ru_kzt(total)],
+        ["В том числе НДС:", format_money_ru_kzt(nds_amount)],
+    ]
+    total_table_label_width = TOTAL_TABLE_LABEL_COL_MM * mm
+    total_table = Table(
+        total_data,
+        colWidths=[total_table_label_width, content_width - total_table_label_width],
+    )
+    total_table.hAlign = "LEFT"
+    total_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (0, -1), font_bold),
+                ("FONTNAME", (1, 0), (1, -1), font_bold),
+                ("FONTSIZE", (0, 0), (-1, -1), TOTAL_FONT_SIZE),
+                ("ALIGN", (0, 0), (0, -1), "RIGHT"),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), TOTAL_ROW_TOP_PADDING),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), TOTAL_ROW_BOTTOM_PADDING),
+            ]
+        )
+    )
+
+    total_formatted = format_money_ru_kzt(total)
+    row1_text = f"<u>Всего наименований {items_count}, на сумму {total_formatted} KZT</u>"
+    row2_text = amount_to_words_kzt(total).capitalize()
+    summary_style = ParagraphStyle(
+        "SummaryRow",
+        parent=styles["Normal"],
+        fontName=font_name,
+        fontSize=SUMMARY_BASE_FONT_SIZE,
+    )
+    amount_words_style = ParagraphStyle(
+        "AmountWordsRow",
+        parent=styles["Normal"],
+        fontName=font_bold,
+        fontSize=SUMMARY_BASE_FONT_SIZE,
+        leading=SUMMARY_AMOUNT_LEADING,
+    )
+    summary_data = [
+        [Paragraph(row1_text, summary_style)],
+        [Paragraph(row2_text, amount_words_style)],
+    ]
+    summary_table = Table(summary_data, colWidths=[content_width])
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), font_name),
+                ("FONTSIZE", (0, 0), (-1, -1), SUMMARY_TABLE_FONT_SIZE),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), SUMMARY_ROW_TOP_PADDING),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), SUMMARY_ROW_BOTTOM_PADDING),
+            ]
+        )
+    )
+
+    signs_data = [["Отпустил ________________________", "Получил ________________________"]]
+    signs_table = Table(signs_data, colWidths=[content_width / 2, content_width / 2])
+    signs_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), font_bold),
+                ("FONTSIZE", (0, 0), (-1, -1), SIGNS_FONT_SIZE),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), SIGNS_ROW_TOP_PADDING),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), SIGNS_ROW_BOTTOM_PADDING),
+            ]
+        )
+    )
+
+    return [
+        total_table,
+        Spacer(1, TOTAL_SPACER_AFTER_MM * mm),
+        summary_table,
+        Spacer(1, SUMMARY_SPACER_AFTER_MM * mm),
+        Spacer(1, SIGNS_SPACER_BEFORE_MM * mm),
+        signs_table,
+    ]
+
+
 def build_pdf(
     calculation_result: CalculationResult,
     records: List[Any],
@@ -171,77 +362,23 @@ def build_pdf(
 
     block_story: list[Any] = []
 
-    # Header: накладная № … от …
-    doc_number = ""
-    doc_date = ""
-    if weighing is not None:
-        doc_number = weighing.invoice_number or weighing.weighing_number
-        if weighing.weighing_datetime:
-            doc_date = weighing.weighing_datetime.strftime("%d.%m.%Y")
-        elif weighing.message_sent_at:
-            doc_date = weighing.message_sent_at.strftime("%d.%m.%Y")
-    if not doc_number:
-        doc_number = meta.get("doc_number", "")
-    if not doc_date:
-        doc_date = meta.get("doc_date") or datetime.now().strftime("%d.%m.%Y")
-    header_text = f"{title} № {doc_number} от {doc_date} г." if doc_number else f"{title} от {doc_date} г."
-    # Заголовок в виде таблицы с одним столбцом
-    header_table = Table([[header_text]], colWidths=[content_width], rowHeights=[HEADER_ROW_HEIGHT])
-    header_table.hAlign = "LEFT"
-    header_table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (-1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), HEADER_FONT_SIZE),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LINEBELOW", (0, 0), (-1, -1), HEADER_UNDERLINE_WIDTH, colors.black),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ]
+    header_text = _resolve_doc_header(title=title, weighing=weighing, meta=meta)
+    block_story.append(
+        _build_header_table(
+            header_text,
+            content_width=content_width,
+            font_bold=font_bold,
         )
     )
-    block_story.append(header_table)
-
-    # Реквизиты поставщика и покупателя — таблица: столбец 1 — описание, столбец 2 — текст
-    supplier = (
-        meta.get("supplier")
-        or meta.get("supplier_name")
-        or 'Товарищество с ограниченной ответственностью "КазТим Комир"'
-    )
-    buyer = meta.get("buyer") or meta.get("buyer_name") or ""
-    if weighing is not None:
-        buyer_parts: list[str] = []
-        if weighing.counterparty:
-            buyer_parts.append(weighing.counterparty)
-        if weighing.plate_number:
-            buyer_parts.append(f"номер авто {weighing.plate_number}")
-        buyer = ", ".join(buyer_parts) or buyer
-    col_label = PARTIES_LABEL_COL_MM * mm
-    col_value = content_width - col_label
-    parties_data: list[list[str]] = [["Поставщик", supplier]]
-    if buyer:
-        parties_data.append(["Покупатель", buyer])
-    parties_table = Table(parties_data, colWidths=[col_label, col_value])
-    parties_table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (0, -1), font_name),
-                ("FONTNAME", (1, 0), (1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), PARTIES_FONT_SIZE),
-                ("ALIGN", (0, 0), (0, -1), "LEFT"),
-                ("ALIGN", (1, 0), (1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), PARTIES_ROW_TOP_PADDING),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), PARTIES_ROW_BOTTOM_PADDING),
-            ]
+    block_story.extend(
+        _build_parties_story(
+            weighing=weighing,
+            meta=meta,
+            content_width=content_width,
+            font_name=font_name,
+            font_bold=font_bold,
         )
     )
-    block_story.append(Spacer(1, PARTIES_SPACER_BEFORE))
-    block_story.append(parties_table)
-    block_story.append(Spacer(1, PARTIES_SPACER_AFTER_MM * mm))
 
     # Таблица позиций
     if weighing is not None:
@@ -254,90 +391,18 @@ def build_pdf(
         nds_amount = nds_override
     else:
         nds_amount = (total / Decimal("116") * Decimal("16")).quantize(Decimal("0.01"))
-    total_data = [
-        ["Итого:", format_money_ru_kzt(total)],
-        ["В том числе НДС:", format_money_ru_kzt(nds_amount)],
-    ]
-    total_table_label_width = TOTAL_TABLE_LABEL_COL_MM * mm
-    total_table = Table(
-        total_data,
-        colWidths=[total_table_label_width, content_width - total_table_label_width],
-    )
-    total_table.hAlign = "LEFT"
-    total_table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (0, -1), font_bold),
-                ("FONTNAME", (1, 0), (1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), TOTAL_FONT_SIZE),
-                ("ALIGN", (0, 0), (0, -1), "RIGHT"),
-                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), TOTAL_ROW_TOP_PADDING),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), TOTAL_ROW_BOTTOM_PADDING),
-            ]
-        )
-    )
-    block_story.append(total_table)
-    block_story.append(Spacer(1, TOTAL_SPACER_AFTER_MM * mm))
-
-    # Всего наименований и сумма прописью — таблица под итогом
     items_count = 1 if weighing is not None else len(records) or 0
-    total_formatted = format_money_ru_kzt(total)
-    row1_text = f"<u>Всего наименований {items_count}, на сумму {total_formatted} KZT</u>"
-    row2_text = amount_to_words_kzt(total).capitalize()
-    summary_style = ParagraphStyle(
-        "SummaryRow",
-        parent=styles["Normal"],
-        fontName=font_name,
-        fontSize=SUMMARY_BASE_FONT_SIZE,
-    )
-    amount_words_style = ParagraphStyle(
-        "AmountWordsRow",
-        parent=styles["Normal"],
-        fontName=font_bold,
-        fontSize=SUMMARY_BASE_FONT_SIZE,
-        leading=SUMMARY_AMOUNT_LEADING,
-    )
-    # Paragraph автоматически перенесёт “сумму прописью” на новую строку при нехватке ширины.
-    summary_data = [
-        [Paragraph(row1_text, summary_style)],
-        [Paragraph(row2_text, amount_words_style)],
-    ]
-    summary_table = Table(summary_data, colWidths=[content_width])
-    summary_table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (-1, -1), font_name),
-                ("FONTSIZE", (0, 0), (-1, -1), SUMMARY_TABLE_FONT_SIZE),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), SUMMARY_ROW_TOP_PADDING),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), SUMMARY_ROW_BOTTOM_PADDING),
-            ]
+    block_story.extend(
+        _build_totals_story(
+            total=total,
+            nds_amount=nds_amount,
+            items_count=items_count,
+            content_width=content_width,
+            styles=styles,
+            font_name=font_name,
+            font_bold=font_bold,
         )
     )
-    block_story.append(summary_table)
-    block_story.append(Spacer(1, SUMMARY_SPACER_AFTER_MM * mm))
-
-    # Подписи: таблица — отпустил (левый столбец), получил (правый)
-    block_story.append(Spacer(1, SIGNS_SPACER_BEFORE_MM * mm))
-    signs_data = [["Отпустил ________________________", "Получил ________________________"]]
-    signs_table = Table(signs_data, colWidths=[content_width / 2, content_width / 2])
-    signs_table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (-1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), SIGNS_FONT_SIZE),
-                ("ALIGN", (0, 0), (0, -1), "LEFT"),
-                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), SIGNS_ROW_TOP_PADDING),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), SIGNS_ROW_BOTTOM_PADDING),
-            ]
-        )
-    )
-    block_story.append(signs_table)
 
     if not duplicate_on_one_page:
         tmp_one = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
