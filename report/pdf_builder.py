@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, List, Optional
-from report.text_formatting import format_cargo_for_cell
+from report.text_formatting import format_cargo_for_cell, kg_to_t
 
 
 from reportlab.lib import colors
@@ -526,18 +526,6 @@ def _build_items_table(
         fontSize=ITEMS_CARGO_FONT_SIZE,
         leading=ITEMS_CARGO_LEADING,
     )
-
-    def _format_ton(value: Decimal) -> str:
-        """Тонны: запятая как разделитель, до 3 знаков, без хвостовых нулей."""
-        s = f"{value:.3f}".replace(".", ",")
-        s = s.rstrip("0").rstrip(",")
-        return s
-
-    def kg_to_t(kg: int) -> str:
-        """Килограммы в тонны: запятая как разделитель, 3 знака после запятой, пробел в целой части."""
-        if not kg:
-            return ""
-        return _format_ton(Decimal(kg) / Decimal("1000"))
 
     netto_kg = weighing.adjusted_netto_kg or weighing.netto_kg
     brutto_kg = (
