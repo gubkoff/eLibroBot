@@ -2,16 +2,14 @@ import logging
 import os
 import tempfile
 from dataclasses import replace
-from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, List, Optional
-from report.text_formatting import format_cargo_for_cell, kg_to_t
 
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus.doctemplate import LayoutError
 from reportlab.pdfgen.canvas import Canvas
@@ -20,19 +18,22 @@ from reportlab.platypus import (
     Frame,
     FrameBreak,
     KeepInFrame,
-    KeepTogether,
     PageBreak,
     PageTemplate,
-    Paragraph,
     Spacer,
-    Table,
     TopPadder,
 )
-from reportlab.platypus.tables import TableStyle
 
 from parser.models import WeighingData
 from report.calculator import CalculationResult
 from report.invoice_models import InvoiceData
+from report.pdf_blocks import (
+    build_header_table,
+    build_items_table,
+    build_parties_story,
+    build_totals_story,
+    resolve_doc_header,
+)
 from report.fonts_cyrillic import (
     CYRILLIC_FONT_BOLD_NAME,
     CYRILLIC_FONT_NAME,
@@ -45,47 +46,12 @@ from report.pdf_layout_constants import (
     CUT_LINE_OFFSET_MM,
     CUT_LINE_WIDTH,
     FRAME_PADDING,
-    HEADER_FONT_SIZE,
-    HEADER_ROW_HEIGHT,
-    HEADER_UNDERLINE_WIDTH,
-    ITEMS_BOX_WIDTH,
-    ITEMS_CARGO_FONT_SIZE,
-    ITEMS_CARGO_LEADING,
-    ITEMS_COL_BASE_WIDTHS,
-    ITEMS_GRID_WIDTH,
-    ITEMS_HEADER_BOTTOM_PADDING,
-    ITEMS_HEADER_TOP_PADDING,
-    ITEMS_ROW_BOTTOM_PADDING,
-    ITEMS_ROW_TOP_PADDING,
     ITEMS_SPACER_AFTER_MM,
     PAGE_MARGIN_BOTTOM_MM,
     PAGE_MARGIN_LEFT_MM,
     PAGE_MARGIN_RIGHT_MM,
     PAGE_MARGIN_TOP_MM,
-    PARTIES_FONT_SIZE,
-    PARTIES_LABEL_COL_MM,
-    PARTIES_ROW_BOTTOM_PADDING,
-    PARTIES_ROW_TOP_PADDING,
-    PARTIES_SPACER_AFTER_MM,
-    PARTIES_SPACER_BEFORE,
-    SIGNS_FONT_SIZE,
-    SIGNS_ROW_BOTTOM_PADDING,
-    SIGNS_ROW_TOP_PADDING,
-    SIGNS_SPACER_BEFORE_MM,
-    SUMMARY_AMOUNT_LEADING,
-    SUMMARY_BASE_FONT_SIZE,
-    SUMMARY_ROW_BOTTOM_PADDING,
-    SUMMARY_ROW_TOP_PADDING,
-    SUMMARY_SPACER_AFTER_MM,
-    SUMMARY_TABLE_FONT_SIZE,
-    TABLE_HEADER_BG_HEX,
-    TOTAL_FONT_SIZE,
-    TOTAL_ROW_BOTTOM_PADDING,
-    TOTAL_ROW_TOP_PADDING,
-    TOTAL_SPACER_AFTER_MM,
-    TOTAL_TABLE_LABEL_COL_MM,
 )
-from report.money_ru import amount_to_words_kzt, format_money_ru_kzt
 
 logger = logging.getLogger(__name__)
 
@@ -113,197 +79,6 @@ def _layout_debug_context(
         "cargo_len": len((weighing.cargo if weighing else "") or ""),
         "counterparty_len": len((weighing.counterparty if weighing else "") or ""),
     }
-
-
-def _resolve_doc_header(
-    *,
-    title: str,
-    weighing: Optional[WeighingData],
-    meta: dict[str, str],
-) -> str:
-    """Возвращает строку заголовка накладной: № и дата."""
-    doc_number = ""
-    doc_date = ""
-    if weighing is not None:
-        doc_number = weighing.invoice_number or weighing.weighing_number
-        if weighing.weighing_datetime:
-            doc_date = weighing.weighing_datetime.strftime("%d.%m.%Y")
-        elif weighing.message_sent_at:
-            doc_date = weighing.message_sent_at.strftime("%d.%m.%Y")
-    if not doc_number:
-        doc_number = meta.get("doc_number", "")
-    if not doc_date:
-        doc_date = meta.get("doc_date") or datetime.now().strftime("%d.%m.%Y")
-    return f"{title} № {doc_number} от {doc_date} г." if doc_number else f"{title} от {doc_date} г."
-
-
-def _build_header_table(header_text: str, *, content_width: float, font_bold: str) -> Table:
-    """Таблица-заголовок с нижней линией."""
-    header_table = Table([[header_text]], colWidths=[content_width], rowHeights=[HEADER_ROW_HEIGHT])
-    header_table.hAlign = "LEFT"
-    header_table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (-1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), HEADER_FONT_SIZE),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LINEBELOW", (0, 0), (-1, -1), HEADER_UNDERLINE_WIDTH, colors.black),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ]
-        )
-    )
-    return header_table
-
-
-def _build_parties_story(
-    *,
-    weighing: Optional[WeighingData],
-    meta: dict[str, str],
-    content_width: float,
-    font_name: str,
-    font_bold: str,
-) -> list[Any]:
-    """Блок поставщик/покупатель со стандартными отступами."""
-    supplier = (
-        meta.get("supplier")
-        or meta.get("supplier_name")
-        or 'Товарищество с ограниченной ответственностью "КазТим Комир"'
-    )
-    buyer = meta.get("buyer") or meta.get("buyer_name") or ""
-    if weighing is not None:
-        buyer_parts: list[str] = []
-        if weighing.counterparty:
-            buyer_parts.append(weighing.counterparty)
-        if weighing.plate_number:
-            buyer_parts.append(f"номер авто {weighing.plate_number}")
-        buyer = ", ".join(buyer_parts) or buyer
-
-    col_label = PARTIES_LABEL_COL_MM * mm
-    col_value = content_width - col_label
-    parties_data: list[list[str]] = [["Поставщик", supplier]]
-    if buyer:
-        parties_data.append(["Покупатель", buyer])
-
-    parties_table = Table(parties_data, colWidths=[col_label, col_value])
-    parties_table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (0, -1), font_name),
-                ("FONTNAME", (1, 0), (1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), PARTIES_FONT_SIZE),
-                ("ALIGN", (0, 0), (0, -1), "LEFT"),
-                ("ALIGN", (1, 0), (1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), PARTIES_ROW_TOP_PADDING),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), PARTIES_ROW_BOTTOM_PADDING),
-            ]
-        )
-    )
-    return [
-        Spacer(1, PARTIES_SPACER_BEFORE),
-        parties_table,
-        Spacer(1, PARTIES_SPACER_AFTER_MM * mm),
-    ]
-
-
-def _build_totals_story(
-    *,
-    total: Decimal,
-    nds_amount: Decimal,
-    items_count: int,
-    content_width: float,
-    styles: Any,
-    font_name: str,
-    font_bold: str,
-) -> list[Any]:
-    """Итоги, сумма прописью и подписи."""
-    total_data = [
-        ["Итого:", format_money_ru_kzt(total)],
-        ["В том числе НДС:", format_money_ru_kzt(nds_amount)],
-    ]
-    total_table_label_width = TOTAL_TABLE_LABEL_COL_MM * mm
-    total_table = Table(
-        total_data,
-        colWidths=[total_table_label_width, content_width - total_table_label_width],
-    )
-    total_table.hAlign = "LEFT"
-    total_table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (0, -1), font_bold),
-                ("FONTNAME", (1, 0), (1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), TOTAL_FONT_SIZE),
-                ("ALIGN", (0, 0), (0, -1), "RIGHT"),
-                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), TOTAL_ROW_TOP_PADDING),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), TOTAL_ROW_BOTTOM_PADDING),
-            ]
-        )
-    )
-
-    total_formatted = format_money_ru_kzt(total)
-    row1_text = f"<u>Всего наименований {items_count}, на сумму {total_formatted} KZT</u>"
-    row2_text = amount_to_words_kzt(total).capitalize()
-    summary_style = ParagraphStyle(
-        "SummaryRow",
-        parent=styles["Normal"],
-        fontName=font_name,
-        fontSize=SUMMARY_BASE_FONT_SIZE,
-    )
-    amount_words_style = ParagraphStyle(
-        "AmountWordsRow",
-        parent=styles["Normal"],
-        fontName=font_bold,
-        fontSize=SUMMARY_BASE_FONT_SIZE,
-        leading=SUMMARY_AMOUNT_LEADING,
-    )
-    summary_data = [
-        [Paragraph(row1_text, summary_style)],
-        [Paragraph(row2_text, amount_words_style)],
-    ]
-    summary_table = Table(summary_data, colWidths=[content_width])
-    summary_table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (-1, -1), font_name),
-                ("FONTSIZE", (0, 0), (-1, -1), SUMMARY_TABLE_FONT_SIZE),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), SUMMARY_ROW_TOP_PADDING),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), SUMMARY_ROW_BOTTOM_PADDING),
-            ]
-        )
-    )
-
-    signs_data = [["Отпустил ________________________", "Получил ________________________"]]
-    signs_table = Table(signs_data, colWidths=[content_width / 2, content_width / 2])
-    signs_table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (-1, -1), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), SIGNS_FONT_SIZE),
-                ("ALIGN", (0, 0), (0, -1), "LEFT"),
-                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), SIGNS_ROW_TOP_PADDING),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), SIGNS_ROW_BOTTOM_PADDING),
-            ]
-        )
-    )
-
-    return [
-        total_table,
-        Spacer(1, TOTAL_SPACER_AFTER_MM * mm),
-        summary_table,
-        Spacer(1, SUMMARY_SPACER_AFTER_MM * mm),
-        Spacer(1, SIGNS_SPACER_BEFORE_MM * mm),
-        signs_table,
-    ]
 
 
 def build_pdf(
@@ -387,16 +162,16 @@ def build_pdf(
 
     block_story: list[Any] = []
 
-    header_text = _resolve_doc_header(title=title, weighing=weighing, meta=meta)
+    header_text = resolve_doc_header(title=title, weighing=weighing, meta=meta)
     block_story.append(
-        _build_header_table(
+        build_header_table(
             header_text,
             content_width=content_width,
             font_bold=font_bold,
         )
     )
     block_story.extend(
-        _build_parties_story(
+        build_parties_story(
             weighing=weighing,
             meta=meta,
             content_width=content_width,
@@ -407,7 +182,7 @@ def build_pdf(
 
     # Таблица позиций
     if weighing is not None:
-        block_story.append(_build_items_table(weighing, font_name, font_bold, content_width))
+        block_story.append(build_items_table(weighing, font_name, font_bold, content_width))
         block_story.append(Spacer(1, ITEMS_SPACER_AFTER_MM * mm))
 
     # Итог по накладной — таблица: первый столбец «Итого», второй — число (оформлено как деньги)
@@ -418,7 +193,7 @@ def build_pdf(
         nds_amount = (total / Decimal("116") * Decimal("16")).quantize(Decimal("0.01"))
     items_count = 1 if weighing is not None else len(records) or 0
     block_story.extend(
-        _build_totals_story(
+        build_totals_story(
             total=total,
             nds_amount=nds_amount,
             items_count=items_count,
@@ -550,76 +325,6 @@ def build_pdf(
             logger.exception("LayoutError в fallback single-layout build_pdf", extra=layout_ctx)
             raise
         return path_double
-
-
-def _build_items_table(
-    weighing: WeighingData, font_name: str, font_bold: str, doc_width: float
-) -> Table:
-    """Создаёт таблицу с позициями накладной по данным WeighingData."""
-    data: list[list[str]] = [
-        [
-            "Товар",
-            "Единица\nизмерения",
-            "Тара",
-            "Нетто",
-            "Брутто",
-            "Цена",
-            "Сумма",
-        ]
-    ]
-    cargo_style = ParagraphStyle(
-        "CargoCell",
-        fontName=font_name,
-        fontSize=ITEMS_CARGO_FONT_SIZE,
-        leading=ITEMS_CARGO_LEADING,
-    )
-
-    netto_kg = weighing.adjusted_netto_kg or weighing.netto_kg
-    brutto_kg = (
-        weighing.tara_kg + weighing.adjusted_netto_kg
-        if weighing.adjusted_netto_kg
-        else weighing.brutto_kg
-    )
-
-    data.append(
-        [
-            Paragraph(format_cargo_for_cell(weighing.cargo), cargo_style),
-            "тонна",
-            kg_to_t(weighing.tara_kg),
-            kg_to_t(netto_kg),
-            kg_to_t(brutto_kg),
-            format_money_ru_kzt(weighing.price_per_ton),
-            format_money_ru_kzt(weighing.amount),
-        ]
-    )
-    # Ширины колонок вычисляем пропорционально, чтобы сумма была ровно doc_width
-    base = ITEMS_COL_BASE_WIDTHS
-    total = sum(base)
-    col_widths = [(w / total) * doc_width for w in base]
-    table = Table(data, colWidths=col_widths)
-    table.hAlign = "LEFT"
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(TABLE_HEADER_BG_HEX)),
-                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (1, 0), (1, -1), "CENTER"),
-                ("ALIGN", (2, 1), (-2, -1), "RIGHT"),
-                ("ALIGN", (-1, 1), (-1, -1), "RIGHT"),
-                ("FONTNAME", (0, 0), (-1, -1), font_name),
-                ("FONTNAME", (0, 0), (-1, 0), font_bold),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("TOPPADDING", (0, 0), (-1, -1), ITEMS_ROW_TOP_PADDING),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), ITEMS_ROW_BOTTOM_PADDING),
-                ("TOPPADDING", (0, 0), (-1, 0), ITEMS_HEADER_TOP_PADDING),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), ITEMS_HEADER_BOTTOM_PADDING),
-                ("GRID", (0, 0), (-1, -1), ITEMS_GRID_WIDTH, colors.gray),
-                ("BOX", (0, 0), (-1, -1), ITEMS_BOX_WIDTH, colors.black),
-            ]
-        )
-    )
-    return table
 
 
 def _invoice_to_weighing_for_table(inv: InvoiceData) -> WeighingData:
