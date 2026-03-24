@@ -90,6 +90,31 @@ from report.money_ru import amount_to_words_kzt, format_money_ru_kzt
 logger = logging.getLogger(__name__)
 
 
+def _layout_debug_context(
+    *,
+    title: str,
+    weighing: Optional[WeighingData],
+    records_count: int,
+    duplicate_on_one_page: bool,
+    content_width: float,
+    content_height: float,
+    frame_h: float,
+) -> dict[str, Any]:
+    """Контекст для диагностики проблем верстки без чувствительных данных."""
+    return {
+        "title": title,
+        "duplicate_on_one_page": duplicate_on_one_page,
+        "records_count": records_count,
+        "content_width_pt": round(content_width, 2),
+        "content_height_pt": round(content_height, 2),
+        "half_frame_height_pt": round(frame_h, 2),
+        "invoice_number": (weighing.invoice_number if weighing else "") or "",
+        "weighing_number": (weighing.weighing_number if weighing else "") or "",
+        "cargo_len": len((weighing.cargo if weighing else "") or ""),
+        "counterparty_len": len((weighing.counterparty if weighing else "") or ""),
+    }
+
+
 def _resolve_doc_header(
     *,
     title: str,
@@ -403,6 +428,15 @@ def build_pdf(
             font_bold=font_bold,
         )
     )
+    layout_ctx = _layout_debug_context(
+        title=title,
+        weighing=weighing,
+        records_count=len(records),
+        duplicate_on_one_page=duplicate_on_one_page,
+        content_width=content_width,
+        content_height=content_height,
+        frame_h=frame_h,
+    )
 
     if not duplicate_on_one_page:
         tmp_one = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
@@ -419,7 +453,11 @@ def build_pdf(
                 PageTemplate(id="single", frames=[single_frame]),
             ],
         )
-        doc_one.build(list(block_story))
+        try:
+            doc_one.build(list(block_story))
+        except LayoutError:
+            logger.exception("LayoutError в single-layout build_pdf", extra=layout_ctx)
+            raise
         return path_one
 
     # Сначала пытаемся сверстать 2 копии на одном листе (верх/низ).
@@ -484,6 +522,11 @@ def build_pdf(
         doc_double.build(story_double, canvasmaker=_SinglePageOnlyCanvas)
         return path_double
     except LayoutError:
+        logger.warning(
+            "Double-layout не поместился, переключаемся на single+pagebreak",
+            extra=layout_ctx,
+            exc_info=True,
+        )
         if os.path.isfile(path_double):
             try:
                 os.remove(path_double)
@@ -501,7 +544,11 @@ def build_pdf(
             ],
         )
         story_single = list(block_story) + [PageBreak()] + list(block_story)
-        doc_single.build(story_single)
+        try:
+            doc_single.build(story_single)
+        except LayoutError:
+            logger.exception("LayoutError в fallback single-layout build_pdf", extra=layout_ctx)
+            raise
         return path_double
 
 
