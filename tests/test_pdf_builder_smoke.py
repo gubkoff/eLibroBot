@@ -4,8 +4,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from parser.models import WeighingData
-from report.calculator import CalculationResult
 from report.pdf_builder import build_pdf
+from report.weighing_print_data import WeighingPrintData
 
 
 def _make_weighing(*, cargo: str, counterparty: str, amount: Decimal) -> WeighingData:
@@ -39,10 +39,7 @@ def test_build_pdf_smoke_long_text_fields() -> None:
     )
     weighing = _make_weighing(cargo=cargo, counterparty=counterparty, amount=Decimal("429120"))
     pdf_path = build_pdf(
-        CalculationResult(total=weighing.amount, by_category={weighing.cargo: weighing.amount}),
-        records=[],
-        weighing=weighing,
-        duplicate_on_one_page=True,
+        WeighingPrintData.from_weighing(weighing, duplicate_on_one_page=True),
     )
     try:
         assert pdf_path.exists()
@@ -63,10 +60,7 @@ def test_build_pdf_smoke_large_block_with_split_fallback() -> None:
     amount = Decimal("99999999.99")
     weighing = _make_weighing(cargo=cargo, counterparty=counterparty, amount=amount)
     pdf_path = build_pdf(
-        CalculationResult(total=weighing.amount, by_category={weighing.cargo: weighing.amount}),
-        records=[],
-        weighing=weighing,
-        duplicate_on_one_page=True,
+        WeighingPrintData.from_weighing(weighing, duplicate_on_one_page=True),
     )
     try:
         assert pdf_path.exists()

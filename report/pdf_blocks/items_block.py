@@ -3,7 +3,7 @@ from reportlab.platypus import Paragraph, Table
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus.tables import TableStyle
 
-from parser.models import WeighingData
+from report.weighing_print_data import WeighingPrintData
 from report.money_ru import format_money_ru_kzt
 from report.pdf_layout_constants import (
     ITEMS_BOX_WIDTH,
@@ -21,10 +21,10 @@ from report.text_formatting import format_cargo_for_cell, kg_to_t
 
 
 def build_items_table(
-    weighing: WeighingData, font_name: str, font_bold: str, doc_width: float
+    data: WeighingPrintData, font_name: str, font_bold: str, doc_width: float
 ) -> Table:
     """Создаёт таблицу с позициями накладной по данным WeighingData."""
-    data: list[list[str]] = [
+    table_data: list[list[str]] = [
         [
             "Товар",
             "Единица\nизмерения",
@@ -42,29 +42,29 @@ def build_items_table(
         leading=ITEMS_CARGO_LEADING,
     )
 
-    netto_kg = weighing.adjusted_netto_kg or weighing.netto_kg
+    netto_kg = data.adjusted_netto_kg or data.netto_kg
     brutto_kg = (
-        weighing.tara_kg + weighing.adjusted_netto_kg
-        if weighing.adjusted_netto_kg
-        else weighing.brutto_kg
+        data.tara_kg + data.adjusted_netto_kg
+        if data.adjusted_netto_kg
+        else data.brutto_kg
     )
 
-    data.append(
+    table_data.append(
         [
-            Paragraph(format_cargo_for_cell(weighing.cargo), cargo_style),
+            Paragraph(format_cargo_for_cell(data.cargo), cargo_style),
             "тонна",
-            kg_to_t(weighing.tara_kg),
+            kg_to_t(data.tara_kg),
             kg_to_t(netto_kg),
             kg_to_t(brutto_kg),
-            format_money_ru_kzt(weighing.price_per_ton),
-            format_money_ru_kzt(weighing.amount),
+            format_money_ru_kzt(data.price_per_ton),
+            format_money_ru_kzt(data.amount),
         ]
     )
 
     base = ITEMS_COL_BASE_WIDTHS
     total = sum(base)
     col_widths = [(w / total) * doc_width for w in base]
-    table = Table(data, colWidths=col_widths)
+    table = Table(table_data, colWidths=col_widths)
     table.hAlign = "LEFT"
     table.setStyle(
         TableStyle(

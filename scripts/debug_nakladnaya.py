@@ -15,10 +15,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from parser.models import WeighingData
-from report import build_pdf_invoice, weighing_to_invoice
-
-_DEFAULT_SUPPLIER = 'Товарищество с ограниченной ответственностью "КазТим Комир"'
-
+from report import build_pdf
+from report.weighing_print_data import WeighingPrintData
 
 def main() -> None:
     # Пример данных взвешивания (можно менять под реальные значения)
@@ -39,8 +37,7 @@ def main() -> None:
         adjusted_netto_kg=0,
     )
 
-    inv = weighing_to_invoice(data, supplier_default=_DEFAULT_SUPPLIER)
-    tmp_pdf = build_pdf_invoice(inv)
+    tmp_pdf = build_pdf(WeighingPrintData.from_weighing(data))
 
     out_path = Path("debug_nakladnaya.pdf")
     out_path.write_bytes(Path(tmp_pdf).read_bytes())

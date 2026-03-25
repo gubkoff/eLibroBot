@@ -14,7 +14,8 @@ from aiogram.types import FSInputFile
 
 from config import get_settings
 from parser import WeighingData, parse_message
-from report import CalculationResult, build_pdf
+from report import build_pdf
+from report.weighing_print_data import WeighingPrintData
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +55,7 @@ async def run_weighing_pipeline(
                 )
             return
 
-        pdf_path = build_pdf(
-            CalculationResult(total=data.amount, by_category={data.cargo: data.amount}),
-            records=[],
-            weighing=data,
-        )
+        pdf_path = build_pdf(WeighingPrintData.from_weighing(data))
         doc_number = data.invoice_number or data.weighing_number
         caption = f"Накладная № {doc_number} на сумму {data.amount}"
         await bot.send_document(

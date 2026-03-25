@@ -1,4 +1,3 @@
-from decimal import Decimal
 from typing import Any
 
 from reportlab.lib.styles import ParagraphStyle
@@ -25,18 +24,21 @@ from report.pdf_layout_constants import (
     TOTAL_TABLE_LABEL_COL_MM,
 )
 
+from report.weighing_print_data import WeighingPrintData
+
 
 def build_totals_story(
     *,
-    total: Decimal,
-    nds_amount: Decimal,
-    items_count: int,
+    data: WeighingPrintData,
     content_width: float,
     styles: Any,
     font_name: str,
     font_bold: str,
 ) -> list[Any]:
     """Итоги, сумма прописью и подписи."""
+    total = data.total
+    nds_amount = data.nds_amount
+    items_count = data.items_count
     total_data = [
         ["Итого:", format_money_ru_kzt(total)],
         ["В том числе НДС:", format_money_ru_kzt(nds_amount)],

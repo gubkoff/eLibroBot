@@ -16,15 +16,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from parser.models import WeighingData
-from report import CalculationResult, build_pdf
+from report import build_pdf
+from report.weighing_print_data import WeighingPrintData
 
 
 def _write_pdf(data: WeighingData, dest: Path) -> None:
-    result = CalculationResult(
-        total=data.amount,
-        by_category={data.cargo[:80]: data.amount},
-    )
-    tmp = build_pdf(result, records=[], weighing=data)
+    tmp = build_pdf(WeighingPrintData.from_weighing(data))
     try:
         dest.write_bytes(Path(tmp).read_bytes())
     finally:

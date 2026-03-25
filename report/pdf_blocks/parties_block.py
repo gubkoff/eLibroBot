@@ -1,10 +1,10 @@
-from typing import Any, Optional
+from typing import Any
 
 from reportlab.lib.units import mm
 from reportlab.platypus import Spacer, Table
 from reportlab.platypus.tables import TableStyle
 
-from parser.models import WeighingData
+from report.weighing_print_data import WeighingPrintData
 from report.pdf_layout_constants import (
     PARTIES_FONT_SIZE,
     PARTIES_LABEL_COL_MM,
@@ -17,31 +17,19 @@ from report.pdf_layout_constants import (
 
 def build_parties_story(
     *,
-    weighing: Optional[WeighingData],
-    meta: dict[str, str],
+    data: WeighingPrintData,
     content_width: float,
     font_name: str,
     font_bold: str,
 ) -> list[Any]:
     """Блок поставщик/покупатель со стандартными отступами."""
-    supplier = (
-        meta.get("supplier")
-        or meta.get("supplier_name")
-        or 'Товарищество с ограниченной ответственностью "КазТим Комир"'
-    )
-    buyer = meta.get("buyer") or meta.get("buyer_name") or ""
-    if weighing is not None:
-        buyer_parts: list[str] = []
-        if weighing.counterparty:
-            buyer_parts.append(weighing.counterparty)
-        if weighing.plate_number:
-            buyer_parts.append(f"номер авто {weighing.plate_number}")
-        buyer = ", ".join(buyer_parts) or buyer
+    supplier = data.supplier
+    buyer = data.buyer
 
     col_label = PARTIES_LABEL_COL_MM * mm
     col_value = content_width - col_label
     parties_data: list[list[str]] = [["Поставщик", supplier]]
-    if buyer:
+    if buyer.strip():
         parties_data.append(["Покупатель", buyer])
 
     parties_table = Table(parties_data, colWidths=[col_label, col_value])

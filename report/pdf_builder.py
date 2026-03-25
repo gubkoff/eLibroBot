@@ -1,10 +1,8 @@
 import logging
 import os
 import tempfile
-from dataclasses import replace
-from decimal import Decimal
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 
 from reportlab.lib import colors
@@ -24,9 +22,6 @@ from reportlab.platypus import (
     TopPadder,
 )
 
-from parser.models import WeighingData
-from report.calculator import CalculationResult
-from report.invoice_models import InvoiceData
 from report.pdf_blocks import (
     build_header_table,
     build_items_table,
@@ -34,6 +29,7 @@ from report.pdf_blocks import (
     build_totals_story,
     resolve_doc_header,
 )
+from report.weighing_print_data import DEFAULT_SUPPLIER, WeighingPrintData
 from report.fonts_cyrillic import (
     CYRILLIC_FONT_BOLD_NAME,
     CYRILLIC_FONT_NAME,
@@ -56,43 +52,63 @@ from report.pdf_layout_constants import (
 logger = logging.getLogger(__name__)
 
 
+class _SinglePageOnlyCanvas(Canvas):
+    """Canvas, запрещающий появление 2+ страниц (для режима double)."""
+
+    def showPage(self) -> None:
+        # На второй странице (и далее) прекращаем сборку, чтобы переключиться на single-layout без линии.
+        if self.getPageNumber() >= 2:
+            raise LayoutError("Double layout produced more than one page")
+        return super().showPage()
+
+
+def _draw_cut_line_factory(
+    *,
+    left_margin: float,
+    right_margin: float,
+    bottom_margin: float,
+    frame_h: float,
+    page_width: float,
+):
+    """Фабрика обработчика onPage для пунктирной линии разреза."""
+
+    def _draw_cut_line(canvas, _doc) -> None:
+        canvas.saveState()
+        try:
+            canvas.setStrokeColor(colors.HexColor(CUT_LINE_COLOR_HEX))
+            canvas.setLineWidth(CUT_LINE_WIDTH)
+            canvas.setDash(CUT_LINE_DASH_ON, CUT_LINE_DASH_OFF)
+            # На 5 мм ниже границы между верхним и нижним фреймами
+            y = bottom_margin + frame_h - CUT_LINE_OFFSET_MM * mm
+            canvas.line(left_margin, y, page_width - right_margin, y)
+        finally:
+            canvas.restoreState()
+
+    return _draw_cut_line
+
+
 def _layout_debug_context(
     *,
-    title: str,
-    weighing: Optional[WeighingData],
-    records_count: int,
-    duplicate_on_one_page: bool,
+    data: WeighingPrintData,
     content_width: float,
     content_height: float,
     frame_h: float,
 ) -> dict[str, Any]:
     """Контекст для диагностики проблем верстки без чувствительных данных."""
     return {
-        "title": title,
-        "duplicate_on_one_page": duplicate_on_one_page,
-        "records_count": records_count,
+        "title": data.title,
+        "duplicate_on_one_page": data.duplicate_on_one_page,
+        "items_count": data.items_count,
         "content_width_pt": round(content_width, 2),
         "content_height_pt": round(content_height, 2),
         "half_frame_height_pt": round(frame_h, 2),
-        "invoice_number": (weighing.invoice_number if weighing else "") or "",
-        "weighing_number": (weighing.weighing_number if weighing else "") or "",
-        "cargo_len": len((weighing.cargo if weighing else "") or ""),
-        "counterparty_len": len((weighing.counterparty if weighing else "") or ""),
+        "doc_number": data.doc_number,
+        "cargo_len": len(data.cargo or ""),
+        "buyer_len": len(data.buyer or ""),
     }
 
 
-def build_pdf(
-    calculation_result: CalculationResult,
-    records: List[Any],
-    title: str = "Расходная накладная",
-    spreadsheet_id: Optional[str] = None,
-    credentials_path: Optional[str] = None,
-    weighing: Optional[WeighingData] = None,
-    *,
-    nds_override: Optional[Decimal] = None,
-    duplicate_on_one_page: bool = True,
-    **meta: str,
-) -> Path:
+def build_pdf(data: WeighingPrintData) -> Path:
     """
     Формирует PDF-документ накладной: шапка с номером и датой,
     реквизиты поставщика и покупателя, таблицу позиций и итоги.
@@ -162,7 +178,7 @@ def build_pdf(
 
     block_story: list[Any] = []
 
-    header_text = resolve_doc_header(title=title, weighing=weighing, meta=meta)
+    header_text = resolve_doc_header(data=data)
     block_story.append(
         build_header_table(
             header_text,
@@ -172,8 +188,7 @@ def build_pdf(
     )
     block_story.extend(
         build_parties_story(
-            weighing=weighing,
-            meta=meta,
+            data=data,
             content_width=content_width,
             font_name=font_name,
             font_bold=font_bold,
@@ -181,22 +196,13 @@ def build_pdf(
     )
 
     # Таблица позиций
-    if weighing is not None:
-        block_story.append(build_items_table(weighing, font_name, font_bold, content_width))
-        block_story.append(Spacer(1, ITEMS_SPACER_AFTER_MM * mm))
+    block_story.append(build_items_table(data, font_name, font_bold, content_width))
+    block_story.append(Spacer(1, ITEMS_SPACER_AFTER_MM * mm))
 
     # Итог по накладной — таблица: первый столбец «Итого», второй — число (оформлено как деньги)
-    total = calculation_result.total
-    if nds_override is not None:
-        nds_amount = nds_override
-    else:
-        nds_amount = (total / Decimal("116") * Decimal("16")).quantize(Decimal("0.01"))
-    items_count = 1 if weighing is not None else len(records) or 0
     block_story.extend(
         build_totals_story(
-            total=total,
-            nds_amount=nds_amount,
-            items_count=items_count,
+            data=data,
             content_width=content_width,
             styles=styles,
             font_name=font_name,
@@ -204,16 +210,13 @@ def build_pdf(
         )
     )
     layout_ctx = _layout_debug_context(
-        title=title,
-        weighing=weighing,
-        records_count=len(records),
-        duplicate_on_one_page=duplicate_on_one_page,
+        data=data,
         content_width=content_width,
         content_height=content_height,
         frame_h=frame_h,
     )
 
-    if not duplicate_on_one_page:
+    if not data.duplicate_on_one_page:
         tmp_one = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
         path_one = Path(tmp_one.name)
         tmp_one.close()
@@ -235,30 +238,6 @@ def build_pdf(
             raise
         return path_one
 
-    # Сначала пытаемся сверстать 2 копии на одном листе (верх/низ).
-    # Если ReportLab не может уложить контент (LayoutError) — печатаем вторую копию на следующей странице сверху.
-    def _draw_cut_line(canvas, _doc) -> None:
-        """Пунктирная линия разреза строго посередине страницы (только для режима double)."""
-        canvas.saveState()
-        try:
-            canvas.setStrokeColor(colors.HexColor(CUT_LINE_COLOR_HEX))
-            canvas.setLineWidth(CUT_LINE_WIDTH)
-            canvas.setDash(CUT_LINE_DASH_ON, CUT_LINE_DASH_OFF)
-            # На 5 мм ниже границы между верхним и нижним фреймами
-            y = bottom_margin + frame_h - CUT_LINE_OFFSET_MM * mm
-            canvas.line(left_margin, y, page_width - right_margin, y)
-        finally:
-            canvas.restoreState()
-
-    class _SinglePageOnlyCanvas(Canvas):
-        """Canvas, запрещающий появление 2+ страниц (для режима double)."""
-
-        def showPage(self) -> None:
-            # На второй странице (и далее) прекращаем сборку, чтобы переключиться на single-layout без линии.
-            if self.getPageNumber() >= 2:
-                raise LayoutError("Double layout produced more than one page")
-            return super().showPage()
-
     tmp_double = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     path_double = Path(tmp_double.name)
     tmp_double.close()
@@ -273,7 +252,13 @@ def build_pdf(
             PageTemplate(
                 id="double",
                 frames=[top_frame, bottom_frame],
-                onPage=_draw_cut_line,
+                onPage=_draw_cut_line_factory(
+                    left_margin=left_margin,
+                    right_margin=right_margin,
+                    bottom_margin=bottom_margin,
+                    frame_h=frame_h,
+                    page_width=page_width,
+                ),
             ),
         ],
     )
@@ -327,58 +312,5 @@ def build_pdf(
         return path_double
 
 
-def _invoice_to_weighing_for_table(inv: InvoiceData) -> WeighingData:
-    """Минимальный ``WeighingData`` для существующей таблицы позиций (итоговые веса из invoice)."""
-    return WeighingData(
-        weighing_number=inv.weighing_number,
-        plate_number=inv.plate_number,
-        tara_kg=inv.tara_kg,
-        brutto_kg=inv.brutto_kg_final,
-        netto_kg=inv.netto_kg_final,
-        cargo=inv.cargo,
-        counterparty="",
-        invoice_number=inv.invoice_number,
-        price_per_ton=inv.price_per_ton_raw,
-        amount=inv.amount_final,
-        weighing_datetime=inv.weighing_datetime,
-        user=inv.user or "",
-        message_sent_at=inv.message_sent_at,
-        adjusted_netto_kg=0,
-    )
-
-
-def build_pdf_invoice(
-    invoice: InvoiceData,
-    *,
-    title: str = "Расходная накладная",
-    duplicate_on_one_page: bool = True,
-    **meta: str,
-) -> Path:
-    """
-    PDF-накладная по ``InvoiceData`` (после ``weighing_to_invoice``).
-
-    ``duplicate_on_one_page=False`` — одна копия на одной странице.
-    """
-    w = _invoice_to_weighing_for_table(invoice)
-    merged: dict[str, str] = {str(k): str(v) for k, v in meta.items()}
-    sup = (invoice.supplier_name or "").strip()
-    if sup:
-        merged["supplier"] = sup
-    buyer_line = (invoice.buyer_line or "").strip()
-    if buyer_line:
-        merged["buyer"] = buyer_line
-    else:
-        w = replace(w, counterparty=invoice.counterparty)
-
-    return build_pdf(
-        CalculationResult(
-            total=invoice.amount_final,
-            by_category={invoice.cargo: invoice.amount_final},
-        ),
-        records=[],
-        title=title,
-        weighing=w,
-        nds_override=invoice.nds_amount,
-        duplicate_on_one_page=duplicate_on_one_page,
-        **merged,
-    )
+## Интеграция `InvoiceData` -> PDF временно удалена.
+## PDF теперь генерируется только по `WeighingPrintData`, чтобы контракт был единым.
