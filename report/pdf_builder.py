@@ -121,7 +121,7 @@ def build_pdf(data: WeighingPrintData) -> Path:
     font_name = CYRILLIC_FONT_NAME if has_cyrillic_font else "Helvetica"
     font_bold = CYRILLIC_FONT_BOLD_NAME if has_cyrillic_font else "Helvetica-Bold"
 
-    # Поля A4 (мм): 15 мм со всех сторон
+    # Поля A4 (мм)
     left_margin = PAGE_MARGIN_LEFT_MM * mm
     right_margin = PAGE_MARGIN_RIGHT_MM * mm
     top_margin = PAGE_MARGIN_TOP_MM * mm
@@ -310,7 +310,3 @@ def build_pdf(data: WeighingPrintData) -> Path:
             logger.exception("LayoutError в fallback single-layout build_pdf", extra=layout_ctx)
             raise
         return path_double
-
-
-## Интеграция `InvoiceData` -> PDF временно удалена.
-## PDF теперь генерируется только по `WeighingPrintData`, чтобы контракт был единым.
