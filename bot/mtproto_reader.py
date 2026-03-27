@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import getpass
 import logging
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from aiogram import Bot
@@ -75,29 +75,20 @@ async def _has_same_plate_within_last_hour(
     chat_id: int,
     current_message_id: int,
     current_plate_number: str,
-    current_message_date,
+    current_weighing_datetime: datetime | None,
 ) -> bool:
     """
     Возвращает True, если в чате есть предыдущее распознаваемое взвешивание
-    за последний час с тем же plate_number.
+    с тем же plate_number и разницей по `Дата взвешивания` не более 1 часа.
     """
     plate_norm = (current_plate_number or "").strip().upper()
-    if not plate_norm:
+    if not plate_norm or current_weighing_datetime is None:
         return False
 
-    current_dt = current_message_date
-    if current_dt.tzinfo is None:
-        current_dt = current_dt.replace(tzinfo=timezone.utc)
+    current_dt = current_weighing_datetime
     cutoff = current_dt - timedelta(hours=1)
 
     async for msg in client.iter_messages(chat_id, offset_id=current_message_id):
-        msg_dt = getattr(msg, "date", None)
-        if msg_dt is not None:
-            if msg_dt.tzinfo is None:
-                msg_dt = msg_dt.replace(tzinfo=timezone.utc)
-            if msg_dt < cutoff:
-                break
-
         raw_text = (getattr(msg, "raw_text", None) or "").strip()
         if not raw_text or raw_text.startswith("/"):
             continue
@@ -105,8 +96,16 @@ async def _has_same_plate_within_last_hour(
         parsed = parse_message(raw_text)
         if parsed is None:
             continue
-        if (parsed.plate_number or "").strip().upper() == plate_norm:
+        if (parsed.plate_number or "").strip().upper() != plate_norm:
+            continue
+        prev_dt = parsed.weighing_datetime
+        if prev_dt is None:
+            continue
+        if cutoff <= prev_dt <= current_dt:
             return True
+        if prev_dt < cutoff:
+            # Дальше в истории время взвешивания будет только меньше.
+            break
 
     return False
 
@@ -235,7 +234,7 @@ async def run_mtproto_client(bot: Bot) -> None:
                     chat_id=event.chat_id,
                     current_message_id=event.id,
                     current_plate_number=parsed_current.plate_number,
-                    current_message_date=event.date,
+                    current_weighing_datetime=parsed_current.weighing_datetime,
                 )
             except Exception:
                 logger.warning(
