@@ -16,6 +16,7 @@ from config import get_settings
 from parser import WeighingData, parse_message
 from report import build_pdf
 from report.weighing_print_data import WeighingPrintData
+from bot.inline_invoice import build_invoice_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,8 @@ async def run_weighing_pipeline(
     *,
     text: str,
     source_chat_id: int,
+    source_message_id: int | None = None,
+    enable_inline_buttons: bool = False,
     source_chat_title: Optional[str],
     bot: Bot,
     reply: OptionalReply = None,
@@ -58,10 +61,18 @@ async def run_weighing_pipeline(
         pdf_path = build_pdf(WeighingPrintData.from_weighing(data))
         doc_number = data.invoice_number or data.weighing_number
         caption = f"Накладная № {doc_number} на сумму {data.amount}"
+        reply_markup = None
+        if source_message_id is not None and enable_inline_buttons:
+            reply_markup = build_invoice_keyboard(
+                source_chat_id=source_chat_id,
+                source_message_id=source_message_id,
+                mode="normal",
+            )
         await bot.send_document(
             chat_id=settings.TARGET_GROUP_ID,
             document=FSInputFile(pdf_path, filename=f"nakladn_{doc_number}.pdf"),
             caption=caption,
+            reply_markup=reply_markup,
         )
     except Exception as e:
         logger.exception("Ошибка в пайплайне отчёта: %s", e)

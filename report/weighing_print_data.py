@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from parser.models import WeighingData
+from report.additional_rules import apply_additional_formula
 
 
 DEFAULT_SUPPLIER = 'Товарищество с ограниченной ответственностью "КазТим Комир"'
 DEFAULT_UNIT = "тонна"
+InvoiceMode = Literal["normal", "additional"]
 
 
 class WeighingPrintData(BaseModel):
@@ -126,5 +128,35 @@ class WeighingPrintData(BaseModel):
             nds_amount=nds_amount,
             items_count=1,
             duplicate_on_one_page=duplicate_on_one_page,
+        )
+
+    @classmethod
+    def from_weighing_mode(
+        cls,
+        weighing: WeighingData,
+        *,
+        mode: InvoiceMode = "normal",
+        previous_weighing: Optional[WeighingData] = None,
+        title: str = "Расходная накладная",
+        supplier: str = DEFAULT_SUPPLIER,
+        duplicate_on_one_page: bool = True,
+        nds_override: Optional[Decimal] = None,
+    ) -> "WeighingPrintData":
+        """
+        Единая точка выбора режима расчёта печатных данных.
+        - normal: текущие правила без изменений
+        - additional: формула дозагрузки (требует previous_weighing)
+        """
+        data_for_print = weighing
+        if mode == "additional":
+            if previous_weighing is None:
+                raise ValueError("previous_weighing is required for additional mode")
+            data_for_print = apply_additional_formula(weighing, previous_weighing)
+        return cls.from_weighing(
+            data_for_print,
+            title=title,
+            supplier=supplier,
+            duplicate_on_one_page=duplicate_on_one_page,
+            nds_override=nds_override,
         )
 

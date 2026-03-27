@@ -17,6 +17,7 @@ from config import get_settings
 from parser import parse_message
 
 from bot import router as report_router
+from bot.invoice_callbacks import router as invoice_callbacks_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -101,6 +102,8 @@ async def main() -> None:
             "Чтение из групп-источников: MTProto (Telethon); "
             "сообщения от других ботов видны. PDF в целевую группу шлёт бот."
         )
+
+    dp.include_router(invoice_callbacks_router)
 
     bot = Bot(
         token=settings.BOT_TOKEN,

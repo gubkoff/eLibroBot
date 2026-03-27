@@ -27,6 +27,7 @@ async def pipeline_handler(message: Message) -> None:
     await run_weighing_pipeline(
         text=message.text or "",
         source_chat_id=message.chat.id,
+        source_message_id=message.message_id,
         source_chat_title=getattr(message.chat, "title", None),
         bot=message.bot,
         reply=reply,
