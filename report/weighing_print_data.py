@@ -110,13 +110,15 @@ class WeighingPrintData(BaseModel):
         else:
             nds_amount = (total / Decimal("116") * Decimal("16")).quantize(Decimal("0.01"))
 
+        cargo = (weighing.cargo or "").strip() or "—"
+
         return cls(
             title=title,
             doc_number=doc_number,
             doc_date=doc_date,
             supplier=supplier,
             buyer=buyer,
-            cargo=weighing.cargo,
+            cargo=cargo,
             unit=DEFAULT_UNIT,
             tara_kg=weighing.tara_kg,
             netto_kg=weighing.netto_kg,
